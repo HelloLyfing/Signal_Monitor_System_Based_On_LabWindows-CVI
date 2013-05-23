@@ -11,7 +11,7 @@ And believe me,this is my first time to make contact with the C programming lang
 Another reason why I published this project was that I hoped my work --which cost me almost one month-- could be stored somewhere, other than once it's done you never care about it anymore.   
 - - -
 This project's **Entry Point** lies in the ***[MainCode.c][2]*** file,and almost all the code I wrote lies in this files,too.  
-If you want download this project,click the **zip** button ,as it showed below:  
+If you want to download this project,click the **zip** button ,as it showed below:  
 <center>
 ![how to download][3]
 </center>
