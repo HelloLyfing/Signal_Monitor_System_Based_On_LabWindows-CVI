@@ -17,16 +17,18 @@
 #define errChk(fCall) if (error = (fCall), error < 0) \
 {goto Error;} else
 #endif
+#define hrChk(f)            if (hr = (f), FAILED(hr)) goto Error; else
 
 // Define.
-#define READ_LENGTH 1200
-#define MAX_THREADS 10
+#define READ_LENGTH 240
+#define MAX_THREADS 49
 /* int functionType */
 #define beginDataAcqType		0
 #define showToastType			1
 
 //temp things
 static char filePath[MAX_PATHNAME_LEN];
+static int temp_int = 0;
 
 /* ============= Static args ============= */
 static CmtThreadPoolHandle poolHandle = 0;
@@ -68,13 +70,15 @@ int plotSelectLineHdl = 0; //temp
 //Showing stat,signal's showing status
 int signalShowingStat[6] = {0};
 char statString[30];
-
+// User Event
+int mouseLeftBtnStat = 0;
+double startPoint[2] = {0.0};  //temp
+double endPoint[2] = {0.0};	   //temp
 int cursorsValidNum = 0;
-
 //Callback func
 int graphsCallbackInstalled = 0; // >0,not Installed; >1,ChildPMode Installed; >2,TabMode Installed.
 
-unsigned char readData[READ_LENGTH] = {0x00};
+unsigned char readData[READ_LENGTH];
 int validMonNum; // valid Monitoring Number
 unsigned char g_databuffer[256];
 
@@ -109,12 +113,12 @@ void runSecondThread(int functionType, void* data);
 void initVars(void);
 void generateSimulateData(unsigned char *data);
 void manageGraphCallbackFunc(void);
+void showInfo(char *msg);
 void showMenuPopup(int pHdl, int ctrlID, int xPoint, int yPoint);
 void runAirplanModel(void);
 void popupPanelForGraph(int pHdl);
 void closePopupPanel(int pHdl);
 void refreshDimmedStat(void);
-void showLogInfo(char *msg);
 int seperateData (unsigned char *data);
 int getGraphIndex(int gCtrl);
 char* getStatString(int ctrl);
@@ -126,7 +130,7 @@ int CVICALLBACK graphCallbackFunc(int panelHandle, int controlID, int event,
 			void *callbackData, int eventData1, int eventData2);
 void CVICALLBACK menuPopupCallback(int menuBarHandle, int menuItemID, 
 	void *callbackData, int panelHandle);
-int CVICALLBACK showLogInfoIn2ndThread(void *functionData);
+int CVICALLBACK showAirplaneModelll(void *functionData);
 /*---------------------------------------------------------------------------*/
 // Main Func, entry point
 /*---------------------------------------------------------------------------*/
@@ -156,9 +160,9 @@ void initVars(void){
 	pHeight = pHeight - mHeight;
 	cWidth = (pWidth - extraRight - averSpaceH*3)/3;
 	cHeight = (pHeight - averSpaceV*2)/2;
-	plotBakgColor = MakeColor(255, 205, 105); //Set background color of graphs
-	plotGridColor = MakeColor(0, 158, 0);
-	plotLineColor = MakeColor(249, 249, 50);
+	plotBakgColor = MakeColor(255, 204, 102); //Set background color of graphs
+	plotGridColor = MakeColor(51, 102, 153);
+	plotLineColor = MakeColor(0, 51, 102);
 	popPanelIsPloting = 0;
 	//Create a ThreadPool
 	if(setupThreadPool()<0){
@@ -168,9 +172,8 @@ void initVars(void){
 	tabWidth = pWidth-extraRight-averSpaceH*3;
 	tabHeight = pHeight - averSpaceV*3;
 	//x,y坐标的标值范围
-	xAxisRange[0] = 0.0, xAxisRange[1] = 9.0; //temp
+	xAxisRange[0] = 0.0, xAxisRange[1] = 9.0; 
 	yAxisRange[0] = 0.0, yAxisRange[1] = 5.0;
-	
 	refreshDimmedStat();
 }
 /*---------------------------------------------------------------------------*/
@@ -179,14 +182,13 @@ void initVars(void){
 static void cleanGarbage(void){
 	pauseDataAcq();
 	CmtDiscardTSQ(tsqHdl);
-	CmtDiscardThreadPool (poolHandle);
 	DiscardPanel(panelHdl);
 }
 
 /*---------------------------------------------------------------------------*/
 // [Start] Button
 /*---------------------------------------------------------------------------*/
-int CVICALLBACK StartBtnCallback(int panel, int control, int event,
+int CVICALLBACK Start_Callback(int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2){
 	switch (event){
 		case EVENT_COMMIT:
@@ -196,6 +198,7 @@ int CVICALLBACK StartBtnCallback(int panel, int control, int event,
 			CmtInstallTSQCallback (tsqHdl, EVENT_TSQ_ITEMS_IN_QUEUE, READ_LENGTH,
 				readDataAndPlot, NULL, CmtGetCurrentThreadID(), NULL);
 			startDataAcq();
+			runSecondThread(showToastType, "Hello World !");
 			break;
 	}
 	return 0;
@@ -229,6 +232,11 @@ void runSecondThread(int functionType, void *data){
 		case beginDataAcqType:
 			CmtScheduleThreadPoolFunction(poolHandle, receiveDataWriteToTSQ, NULL, NULL);
 			break;
+		case showToastType:
+			char *msg = (char *)data;
+			showInfo(msg);
+			CmtScheduleThreadPoolFunction(poolHandle, showToast, msg, NULL);
+			break;
 	}
 }
 
@@ -245,23 +253,37 @@ void CVICALLBACK readDataAndPlot(CmtTSQHandle queueHandle, unsigned int event,
             while (tsqRValue >= READ_LENGTH){
                 CmtReadTSQData(tsqHdl, data, READ_LENGTH, TSQ_INFINITE_TIMEOUT, 0);
 				/* Start to calculate the 陀螺仪的x,y,z 以及加计的x,y,z */
+				// memset(resultData, 0, sizeof(resultData));
 				resultCounter = 0; //用来重新 自增计数 resultData[x][resultCounter]中的采集次数
 				seperateData(&data[0]);
 				/* Plot the data. Doing any signal-processing/data-analysis stuff here */
                 if(tabFlag==0){ //Child Panels Mode
 					for(int i=0; i<validMonNum; i++){
-						PlotStripChart(CPanels[i], PGraphs[i], resultData[i], READ_LENGTH/24, 0, 0, VAL_DOUBLE);
+						if( PGPlots[i] > 0){ 
+							DeleteGraphPlot(CPanels[i], PGraphs[i], PGPlots[i], VAL_IMMEDIATE_DRAW);
+						}
+						PGPlots[i] = PlotY (CPanels[i], PGraphs[i], resultData[i], READ_LENGTH/24, VAL_DOUBLE, VAL_THIN_LINE,
+	                    VAL_EMPTY_SQUARE, VAL_SOLID, 1, plotLineColor);
 					}
 				}else{ //Tab pages mode
 					int i = 0;
 					GetActiveTabPage (panelHdl, tabCtrl, &i);
-					PlotStripChart(TPanels[i], PGraphs[i], resultData[i], READ_LENGTH/24, 0, 0, VAL_DOUBLE);
+					if( PGPlots[i] > 0){
+						DeleteGraphPlot(TPanels[i], PGraphs[i], PGPlots[i], VAL_IMMEDIATE_DRAW);
+	                }
+					PGPlots[i] = PlotY (TPanels[i], PGraphs[i], resultData[i], READ_LENGTH/24, VAL_DOUBLE, VAL_THIN_LINE,
+	                           VAL_EMPTY_SQUARE, VAL_SOLID, 1, plotLineColor);	
 				}
 				popPanelIsPloting = 1;
 				for(int i=0; i<validMonNum; i++){
 					if( PopPanels[i]>0 ){
-						PlotY(PopPanels[i], PopGraphs[i], resultData[i], READ_LENGTH/24, VAL_DOUBLE, VAL_THIN_LINE,
-               				   VAL_EMPTY_SQUARE, VAL_SOLID, 1, plotLineColor);
+						char msg[200];Fmt(msg, "PopPanels[%d]=%d,\n  PopGPlots[%d]=%d\n", i,PopPanels[i],i,PopGPlots[i]);
+						showInfo(msg);
+						if(PopGPlots[i]>0){
+							DeleteGraphPlot(PopPanels[i], PopGraphs[i], PopGPlots[i], VAL_IMMEDIATE_DRAW);
+						}
+						PopGPlots[i] = PlotY (PopPanels[i], PopGraphs[i], resultData[i], READ_LENGTH/24, VAL_DOUBLE, VAL_THIN_LINE,
+	                           VAL_EMPTY_SQUARE, VAL_SOLID, 1, plotLineColor);
 					}
 				}
 				popPanelIsPloting = 0;
@@ -279,6 +301,7 @@ void readDataFromFile(void){
 	FILE *file = fopen(filePath, "r");
 	bytesRead = fread(&readData, sizeof(char), READ_LENGTH, file);
 	fclose(file);
+	printf("bytesRead = %d\n", bytesRead);
 	for(int i=0; i<240; i++){
 		if( i> 0 && i%24 == 0){ printf("-------------------\n");}
 		printf("char[%d] = %x\n", i,readData[i]);
@@ -320,25 +343,24 @@ void pauseDataAcq(void){
 /*---------------------------------------------------------------------------*/	
 void initChildPanels(void){
 	/* 循环创建六个Panel */
-	CPanels[0] = createChildPanel("xAxls-Accelerator", 0);
-	CPanels[1] = createChildPanel("yAxls-Accelerator", 1);
-	CPanels[2] = createChildPanel("zAxls-Accelerator", 2);
-	CPanels[3] = createChildPanel("xAxls-Gyro", 3);
-	CPanels[4] = createChildPanel("yAxls-Gyro", 4);
-	CPanels[5] = createChildPanel("zAxls-Gyro", 5);
-	for(int i = 0; i<validMonNum; i++){
+	char msg[256];
+	for(int i = 0; i<6; i++){
+		Fmt(msg, "ChildPanel[%d]", i);
+		CPanels[i] = createChildPanel(msg, i);
 		DisplayPanel (CPanels[i]);
 	}
 	//在子Panel上创建图表，设置Graph属性，准备显示数据
 	for(int i=0; i<validMonNum; i++){
-		PGraphs[i] = NewCtrl(CPanels[i], CTRL_STRIP_CHART, "temp", 0,0);
+		PGraphs[i] = NewCtrl(CPanels[i], CTRL_GRAPH, "temp", 0,0);
 		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_WIDTH, cWidth);
 		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_HEIGHT, cHeight);
 		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_PLOT_BGCOLOR, plotBakgColor);
 		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_GRID_COLOR, plotGridColor);
+		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_CTRL_MODE, VAL_HOT); //CtrlMode→Hot
+		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_GRID_COLOR, plotGridColor);
+		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_NUM_CURSORS, 0);
 		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_EDGE_STYLE, VAL_FLAT_EDGE);		
-		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_SCROLL_MODE, VAL_CONTINUOUS);
-		SetAxisScalingMode(CPanels[i], PGraphs[i], VAL_LEFT_YAXIS, VAL_MANUAL, yAxisRange[0], yAxisRange[1]);
+		//Enable Zoom and customize it's style
 		///SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_ENABLE_ZOOM_AND_PAN, 1);
 		///SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_ZOOM_STYLE, VAL_ZOOM_XAXIS);
 	}
@@ -357,8 +379,8 @@ void CVICALLBACK switchMode_Tab_CPanel(int menuBar, int menuItem, void *callback
 		//创建Tab
 		if(tabCtrl <=0){
 			tabWidth = pWidth-extraRight-averSpaceH;
-			tabHeight = pHeight - averSpaceV*2 + 12;
-			tabCtrl = NewCtrl(panelHdl, CTRL_TABS, "", mHeight + 5, averSpaceH);
+			tabHeight = pHeight - averSpaceV*2;
+			tabCtrl = NewCtrl(panelHdl, CTRL_TABS, "", (mHeight + averSpaceV), averSpaceH);
 	        SetCtrlAttribute(panelHdl, tabCtrl, ATTR_WIDTH, tabWidth);
 	        SetCtrlAttribute(panelHdl, tabCtrl, ATTR_HEIGHT, tabHeight);
 		}
@@ -369,6 +391,8 @@ void CVICALLBACK switchMode_Tab_CPanel(int menuBar, int menuItem, void *callback
 			GetPanelHandleFromTabPage(panelHdl, tabCtrl, i, &TPanels[i]);
 			SetCtrlAttribute(TPanels[i], PGraphs[i], ATTR_WIDTH, tabWidth-3);
 			SetCtrlAttribute(TPanels[i], PGraphs[i], ATTR_HEIGHT, tabHeight-15);
+			SetCtrlAttribute(TPanels[i], PGraphs[i], ATTR_NUM_CURSORS, cursorsValidNum);// cursorsValidNum
+			SetAxisScalingMode(TPanels[i], PGraphs[i], VAL_BOTTOM_XAXIS, VAL_MANUAL, xAxisRange[0], xAxisRange[1]);
 			SetAxisScalingMode(TPanels[i], PGraphs[i], VAL_LEFT_YAXIS, VAL_MANUAL, yAxisRange[0], yAxisRange[1]);
 		}
 		tabFlag = 1;
@@ -386,7 +410,7 @@ void CVICALLBACK switchMode_Tab_CPanel(int menuBar, int menuItem, void *callback
 			if(PGraphs[i]>0){
 				SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_WIDTH, cWidth);
 				SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_WIDTH, cWidth);
-				//temp SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_NUM_CURSORS, 0);
+				SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_NUM_CURSORS, 0);
 			}
 		}
 		tabFlag = 0;
@@ -460,11 +484,16 @@ int CVICALLBACK graphCallbackFunc(int panelHandle, int controlID, int event,
 	char msg[256] = {'0'};
 	switch(event){
 		case EVENT_LEFT_CLICK:
+			if( mouseLeftBtnStat == 0){
+				Fmt(msg, "LeftClick.");
+				showInfo(msg);
+			}
 			break;
 		case EVENT_LEFT_CLICK_UP:
 			if(tabFlag == 1){ //Select area only active on Tab Page mode
 				int i = 0;
 				Fmt(msg, "Click_Up");
+				showInfo(msg);
 			}
 			break;
 		case EVENT_RIGHT_CLICK:
@@ -518,20 +547,27 @@ void CVICALLBACK menuPopupCallback(int menuBarHandle, int menuItemID,
 	}
 }
 
-/* 弹出信号分析窗口 */
+/* 弹出窗口，显示数据 */
 void popupPanelForGraph(int pHdl){
+	char panelTitle[20] = "Graph Detail";
+	int panelH = 450;
+	int panelW = 650;
 	int i = getGraphIndex(pHdl); //Need a index to find one of the six graphs.
 	// pHdl2 是从uir文件中load的弹出窗口
 	if(PopPanels[i] <=0 ){
 		if ((PopPanels[i] = LoadPanel(0, "MainPanel.uir", PopupPanel)) < 0)
-			showError(0,0, "Load PopupPanel Error!");
+			showError(0,0, "Load Error");
 		DisplayPanel(PopPanels[i]);
-		PopGraphs[i] = PopupPanel_PopGraph1;
+		PopGraphs[i] = PopupPanel_PopupGraph;
+		SetCtrlAttribute(PopPanels[i], PopGraphs[i], ATTR_PLOT_BGCOLOR, plotBakgColor);
 		SetCtrlAttribute(PopPanels[i], PopGraphs[i], ATTR_GRID_COLOR, plotGridColor);
+		SetCtrlAttribute(PopPanels[i], PopGraphs[i], ATTR_CTRL_MODE, VAL_HOT); //CtrlMode→Hot
+		SetCtrlAttribute(PopPanels[i], PopGraphs[i], ATTR_NUM_CURSORS, 0);
 		SetCtrlAttribute(PopPanels[i], PopGraphs[i], ATTR_GRAPH_BGCOLOR, VAL_TRANSPARENT);
+		SetAxisScalingMode(PopPanels[i], PopGraphs[i], VAL_BOTTOM_XAXIS, VAL_MANUAL, xAxisRange[0], xAxisRange[1]);
 		SetAxisScalingMode(PopPanels[i], PopGraphs[i], VAL_LEFT_YAXIS, VAL_MANUAL, yAxisRange[0], yAxisRange[1]);
-		PopGPlots[i] = PlotY(PopPanels[i], PopGraphs[i], resultData[i], READ_LENGTH/24, 
-							 VAL_DOUBLE, VAL_THIN_LINE, VAL_EMPTY_SQUARE, VAL_SOLID,1, plotLineColor);
+		PopGPlots[i] = PlotY(PopPanels[i], PopGraphs[i], resultData[i], READ_LENGTH/24, VAL_DOUBLE, VAL_THIN_LINE,
+	                           VAL_EMPTY_SQUARE, VAL_SOLID, 1, plotLineColor);
 	}else{
 		SetActivePanel(PopPanels[i]);
 	}
@@ -572,6 +608,27 @@ int CVICALLBACK Config_Com_Btn(int panel, int control, int event,
 			InstallPopup(popConfigPanel);
 			break;
 	}
+	return 0;
+}
+
+/* Show Toast Msg */
+int CVICALLBACK showToast(void *functionData){
+	char *msg = (char *)functionData;
+	int length = sizeof(msg) + 5;
+	int panelHdlTemp = panelHdl;
+	int msgCtrl = NewCtrl(panelHdlTemp, CTRL_TEXT_MSG, 0, -10, pWidth-length);
+	SetCtrlAttribute(panelHdlTemp, msgCtrl, ATTR_WIDTH, length);
+	SetCtrlAttribute(panelHdlTemp, msgCtrl, ATTR_HEIGHT, 15);
+	SetCtrlVal(panelHdl, msgCtrl, msg);
+	double dTime = 0.5/15;
+	
+	for(int i=0; i<15; i++){
+		SetCtrlAttribute(panelHdlTemp, msgCtrl, ATTR_TOP, i-10);
+		Delay( dTime );
+		showInfo(msg);
+	}
+	Delay(1);
+	DiscardCtrl(panelHdlTemp, msgCtrl);
 	return 0;
 }
 
@@ -630,21 +687,37 @@ void refreshDimmedStat(void){
 	}
 	
 }
+/*---------------------------------------------------------------------------*/
+// ***************************
+// * Insert before this part *
+// ***************************
+/*---------------------------------------------------------------------------*/
+
 
 /*---------------------------------------------------------------------------*/ 
 // Menu菜单的 所有回调函数
 /*---------------------------------------------------------------------------*/
+void CVICALLBACK gotoRunAirplanModel(int menuBar, int menuItem, void *callbackData,int panel){
+	// runAirplaneModel();
+}
 void CVICALLBACK menu_Exit(int menuBar, int menuItem, void *callbackData,int panel){
   	QuitUserInterface (0);
 }
 
+void CVICALLBACK showMenu_2_1_1 (int menuBar, int menuItem, void *callbackData,int panel){
+  MessagePopup("Menu_1_1","Hello world! I love you !");
+}
+void CVICALLBACK showMenu_2_2 (int menuBar, int menuItem, void *callbackData,int panel){
+  MessagePopup("Menu_1_1","Hello world! I love you !");
+}
 
 /*---------------------------------------------------------------------------*/
 // 辅助类函数 新建并初始化线程池
 /*---------------------------------------------------------------------------*/
 static int setupThreadPool (void){
     int error = 0;
-    errChk(CmtNewThreadPool(MAX_THREADS, &poolHandle));
+    // errChk (CmtNewThreadLocalVar (sizeof (int), (void *)0, NULL, NULL, &tlvHandle));
+    errChk (CmtNewThreadPool(MAX_THREADS, &poolHandle));
 Error:
     return error;
 }
@@ -656,12 +729,12 @@ void CVICALLBACK pauseReceive (int menuBar, int menuItem,
 	void *callbackData, int panel){
 	if(PGraphs[0] <= 0) return;
 	if(receiveFlag == 0){
-		SetMenuBarAttribute (menuBar, menuItem, ATTR_ITEM_NAME, "Pause All");
+		SetMenuBarAttribute (menuBar, menuItem, ATTR_ITEM_NAME, "Pause");
 		receiveFlag = 1;
 		startDataAcq();
 	}else{ 
 		pauseDataAcq();
-		SetMenuBarAttribute (menuBar, menuItem, ATTR_ITEM_NAME, "Resume All");
+		SetMenuBarAttribute (menuBar, menuItem, ATTR_ITEM_NAME, "Resume");
 	}
 }
 
@@ -672,7 +745,7 @@ int CVICALLBACK QuitCallback (int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2){
 	switch (event){
 		case EVENT_COMMIT:
-			QuitUserInterface(0);
+			QuitUserInterface (0);
 			break;
 	}
 	return 0;
@@ -708,28 +781,28 @@ void showError (int errorType, int errorCode, char* msg){
 		switch (errorCode){
 	        default:
 	            if (errorCode < 0){  
-	                Fmt(ErrorMessage, "%s<RS232 error number %i", errorCode);
-	                MessagePopup("RS232 Message", ErrorMessage);}
+	                Fmt (ErrorMessage, "%s<RS232 error number %i", errorCode);
+	                MessagePopup ("RS232 Message", ErrorMessage);}
 	            break;
 	        case 0:
-	            MessagePopup("RS232 Message", "No errors.");
+	            MessagePopup ("RS232 Message", "No errors.");
 	            break;
 	        case -2:
-	            Fmt(ErrorMessage, "%s", 
+	            Fmt (ErrorMessage, "%s", 
 					"Invalid port number (must be in the range 1 to 8).");
-	            MessagePopup("RS232 Message", ErrorMessage);
+	            MessagePopup ("RS232 Message", ErrorMessage);
 	            break;
 	        case -3 :
-	            Fmt(ErrorMessage, "%s", 
+	            Fmt (ErrorMessage, "%s", 
 					"No port is open.\n Check COM Port setting in Configure.");
-	            MessagePopup("RS232 Message", ErrorMessage);
+	            MessagePopup ("RS232 Message", ErrorMessage);
 	            break;
 	        case -99 :
-	            Fmt(ErrorMessage, "%s", "Timeout error.\n\n"
+	            Fmt (ErrorMessage, "%s", "Timeout error.\n\n"
 	                 "Either increase timeout value,\n"
 	                 "       check COM Port setting, or\n"
 	                 "       check device.");
-	            MessagePopup("RS232 Message", ErrorMessage);
+	            MessagePopup ("RS232 Message", ErrorMessage);
 	            break;
 		}//switch();
 	}else {
@@ -811,33 +884,7 @@ void generateSimulateData(unsigned char *data){
 					data[ 6	+ temp_int*24 +k*3] = 0x9e;
 					data[temp_int*24 + 7+k*3] = 0x89;}}
 		}
-	}//for()
-	int j=0;
-	for(int i=0; i<READ_LENGTH; i++){
-		j = (int)Random(0.0, 5.0);
-		if(0x00 == data[i]){
-			if(0 == i%24)
-				data[i] = 0xeb;	
-			else if(1 ==i%24 )
-				data[i] = 0xea;
-			else{	
-				switch(j){
-					case 1:
-						data[i] = 0x8f;
-						break;
-					case 2:
-						data[i] = 0x7f;
-						break;
-					case 3:
-						data[i] = 0x90;
-						break;
-					default:
-						data[i] = 0x86;
-				}//switch()
-			}
-		}
 	}
-	
 }
 
 /*---------------------------------------------------------------------------*/
@@ -891,70 +938,16 @@ void SeperateFunc(unsigned char* finddata){
 	}
 	resultCounter ++;
 }
-
-/* 用来在窗口打印 Log 信息 */
-void showLogInfo(char *msg){
-	CmtScheduleThreadPoolFunction(poolHandle, showLogInfoIn2ndThread, msg, NULL);
-	printf("hello  22");
-}
-
-int CVICALLBACK showLogInfoIn2ndThread(void *functionData){
-	char title[50], *msg;
-	printf("hello  20");
-	msg = (char *)functionData;
-	printf("hello  24");
-	return 0;
+/* 暂时用来打印数据 */
+void showInfo(char *msg){
+	char temp[256];
+	GetCtrlVal(panelHdl, MainPanel_TextMsg, temp);
+	if (strlen(temp)>200) temp[0] = '\0';
+	strcat(temp, "\n");
+	strcat(temp, msg);
+	SetCtrlVal(panelHdl, MainPanel_TextMsg, temp);
 }
 
 
-int CVICALLBACK FFT_Btn_Callback(int panel, int control, int event,
-		void *callbackData, int eventData1, int eventData2){
-	switch(event){
-		case EVENT_COMMIT:
 
-			break;
-	}
-	return 0;
-}
 
-int CVICALLBACK PopQuitBtn(int panel, int control, int event,
-		void *callbackData, int eventData1, int eventData2) {
-	switch (event) {
-		case EVENT_COMMIT:
-
-			break;
-	}
-	return 0;
-}
-
-/* 下拉控件-原信号-回调函数 */
-int CVICALLBACK ring1Callback (int panel, int control, int event,
-		void *callbackData, int eventData1, int eventData2) {
-	switch (event) {
-		case EVENT_COMMIT:
-
-			break;
-	}
-	return 0;
-}
-
-/* 下拉控件-窗函数-回调函数 */
-int CVICALLBACK ring2Callback (int panel, int control, int event,
-		void *callbackData, int eventData1, int eventData2) {
-	switch (event) {
-		case EVENT_COMMIT:
-
-			break;
-	}
-	return 0;
-}
-/* 下拉控件-<信号分析处理>-回调函数 */
-int CVICALLBACK analysisCallback (int panel, int control, int event,
-		void *callbackData, int eventData1, int eventData2) {
-	switch (event) {
-		case EVENT_COMMIT:
-
-			break;
-	}
-	return 0;
-}
