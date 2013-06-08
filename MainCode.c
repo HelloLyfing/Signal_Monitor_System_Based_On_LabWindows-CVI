@@ -9,7 +9,6 @@
 #include <userint.h>
 #include <stdio.h>
 #include <cviauto.h>
-#include "3DGraphCtrl.h"
 #include "MainPanel.h"
 
 /*-- Error Check --*/
@@ -19,16 +18,11 @@
 #endif
 
 // Define.
-#define READ_LENGTH 1200
+#define READ_LENGTH 2400
 #define MAX_THREADS 10
 /* int functionType */
 #define beginDataAcqType		0
-#define showToastType			1
 
-//temp things
-static char filePath[MAX_PATHNAME_LEN];
-
-/* ============= Static args ============= */
 static CmtThreadPoolHandle poolHandle = 0;
 static CmtTSQHandle tsqHdl;
 static char filePath[MAX_PATHNAME_LEN];
@@ -55,15 +49,15 @@ int CPanels[6]={0}, TPanels[6]={0}, PGraphs[6], PGPlots[6];
 // receiveFlag =1,Receive; =0, pause.
 int receiveFlag = 1, configComFlag = 1;
 double xAxisRange[2], yAxisRange[2]; //x,y坐标轴的标值范围
-//Data Read Write Relative
+//Data Reading Writing Relative Vals
 int bytesRead;
 int writeTSQEndFlag = 0, readTSQEndFlag = 0;
 int dataLen = 0;
 
 //Ploting args
-int plotBakgColor = VAL_BLACK;
-int plotLineColor = VAL_BLUE;
-int plotGridColor = VAL_GREEN;
+int plotBakgColor;
+int plotLineColor;
+int plotGridColor;
 int plotSelectLineHdl = 0; //temp
 //Showing stat,signal's showing status
 int signalShowingStat[6] = {0};
@@ -72,7 +66,7 @@ char statString[30];
 int cursorsValidNum = 0;
 
 //Callback func
-int graphsCallbackInstalled = 0; // >0,not Installed; >1,ChildPMode Installed; >2,TabMode Installed.
+int graphsCallbackInstalled = 0; // >0,not Installed| >1,ChildPMode Installed| >2,TabMode Installed
 
 unsigned char readData[READ_LENGTH] = {0x00};
 int validMonNum; // valid Monitoring Number
@@ -82,7 +76,9 @@ unsigned char g_databuffer[256];
 int averSpaceV;
 int averSpaceH;
 
-// Reading Ploting data args
+// Analysis relative vals
+double tempData[6][READ_LENGTH/24];
+// Reading Ploting data vals
 double resultData[6][READ_LENGTH/24];
 int resultCounter = 0;
 
@@ -115,8 +111,9 @@ void popupPanelForGraph(int pHdl);
 void closePopupPanel(int pHdl);
 void refreshDimmedStat(void);
 void showLogInfo(char *msg);
+void drawAnalysisResult(int panel);
 int seperateData (unsigned char *data);
-int getGraphIndex(int gCtrl);
+int getGraphIndex(int PanelCtrl, int fromWhere);
 char* getStatString(int ctrl);
 void CVICALLBACK readDataAndPlot(CmtTSQHandle queueHandle, unsigned int event,
         	int value, void *callbackData);
@@ -127,6 +124,7 @@ int CVICALLBACK graphCallbackFunc(int panelHandle, int controlID, int event,
 void CVICALLBACK menuPopupCallback(int menuBarHandle, int menuItemID, 
 	void *callbackData, int panelHandle);
 int CVICALLBACK showLogInfoIn2ndThread(void *functionData);
+
 /*---------------------------------------------------------------------------*/
 // Main Func, entry point
 /*---------------------------------------------------------------------------*/
@@ -174,7 +172,7 @@ void initVars(void){
 	refreshDimmedStat();
 }
 /*---------------------------------------------------------------------------*/
-// 程序退出时，清理占用的空间和垃圾 
+// 程序退出时，清理占用的内存和垃圾 
 /*---------------------------------------------------------------------------*/
 static void cleanGarbage(void){
 	pauseDataAcq();
@@ -202,10 +200,9 @@ int CVICALLBACK StartBtnCallback(int panel, int control, int event,
 }
 
 /*---------------------------------------------------------------------------*/ 
-// In another thread, Receive datas and write them into TSQ 
+// In another thread, receives data and writes them into TSQ 
 /*---------------------------------------------------------------------------*/
 int CVICALLBACK receiveDataWriteToTSQ(void *functionData){
-	initCOMConfig();
 	///OpenComConfig(comPort, "", baudRate, parity, dataBits, stopBits, inQueueSize, outQueueSize);
 	//Fmt(filePath, "c:\\Users\\Lyfing\\Desktop\\temp\\Perfect.dat");
 	//FILE *file = fopen(filePath, "r");
@@ -257,14 +254,14 @@ void CVICALLBACK readDataAndPlot(CmtTSQHandle queueHandle, unsigned int event,
 					GetActiveTabPage (panelHdl, tabCtrl, &i);
 					PlotStripChart(TPanels[i], PGraphs[i], resultData[i], READ_LENGTH/24, 0, 0, VAL_DOUBLE);
 				}
-				popPanelIsPloting = 1;
+				/*-temp popPanelIsPloting = 1;
 				for(int i=0; i<validMonNum; i++){
 					if( PopPanels[i]>0 ){
 						PlotY(PopPanels[i], PopGraphs[i], resultData[i], READ_LENGTH/24, VAL_DOUBLE, VAL_THIN_LINE,
                				   VAL_EMPTY_SQUARE, VAL_SOLID, 1, plotLineColor);
 					}
 				}
-				popPanelIsPloting = 0;
+				popPanelIsPloting = 0; temp-*/
 				tsqRValue -= READ_LENGTH;
             }
             break;
@@ -350,7 +347,7 @@ void initChildPanels(void){
 /*---------------------------------------------------------------------------*/
 // 在Tab 模式 和 ChildPanels 模式之间切换
 /*---------------------------------------------------------------------------*/	
-void CVICALLBACK switchMode_Tab_CPanel(int menuBar, int menuItem, void *callbackData,
+void CVICALLBACK switchViewMode(int menuBar, int menuItem, void *callbackData,
 		int panel){
 	pauseDataAcq();
 	if(tabFlag == 0){ //Child-Panel => Tab-Pages
@@ -460,12 +457,7 @@ int CVICALLBACK graphCallbackFunc(int panelHandle, int controlID, int event,
 	char msg[256] = {'0'};
 	switch(event){
 		case EVENT_LEFT_CLICK:
-			break;
-		case EVENT_LEFT_CLICK_UP:
-			if(tabFlag == 1){ //Select area only active on Tab Page mode
-				int i = 0;
-				Fmt(msg, "Click_Up");
-			}
+			
 			break;
 		case EVENT_RIGHT_CLICK:
 			showMenuPopup(pHdl, ctrlID, x, y);
@@ -478,14 +470,14 @@ int CVICALLBACK graphCallbackFunc(int panelHandle, int controlID, int event,
 }
 
 /*---------------------------------------------------------------------------*/
-// 右键弹出菜单(只对Graph有效)
+// 右键弹出菜单(只对Graph类的控件有效)
 /*---------------------------------------------------------------------------*/
 void showMenuPopup(int pHdl, int ctrlID, int xPoint, int yPoint){
-	int i = getGraphIndex(pHdl);
+	int i = getGraphIndex(pHdl, 0);
 	int menuBar = NewMenuBar(0);
 	int menuIDForPop = NewMenu(menuBar, "" , -1);
-	char openStr[25]="View in new window";
-	char closeStr[25]="Close the popup window";
+	char openStr[25]="Open Analysis Window";
+	char closeStr[25]="Close Analysis Window";
 	if(tabFlag == 0){
 		NewMenuItem(menuBar, menuIDForPop, "Pause", -1, 0, menuPopupCallback, NULL);
 		NewMenuItem(menuBar, menuIDForPop, PopPanels[i]>0?closeStr:openStr, -1, 0, menuPopupCallback, NULL);
@@ -503,7 +495,7 @@ void showMenuPopup(int pHdl, int ctrlID, int xPoint, int yPoint){
 void CVICALLBACK menuPopupCallback(int menuBarHandle, int menuItemID, 
 	void *callbackData, int panelHandle){
 	///temp gCtrl = *(int *)callbackData;
-	int i = getGraphIndex(panelHandle);
+	int i = getGraphIndex(panelHandle, 0);
 	switch(menuItemID){
 		case 3:
 			break;
@@ -518,39 +510,30 @@ void CVICALLBACK menuPopupCallback(int menuBarHandle, int menuItemID,
 	}
 }
 
-/* 弹出信号分析窗口 */
-void popupPanelForGraph(int pHdl){
-	int i = getGraphIndex(pHdl); //Need a index to find one of the six graphs.
-	// pHdl2 是从uir文件中load的弹出窗口
-	if(PopPanels[i] <=0 ){
-		if ((PopPanels[i] = LoadPanel(0, "MainPanel.uir", PopupPanel)) < 0)
-			showError(0,0, "Load PopupPanel Error!");
-		DisplayPanel(PopPanels[i]);
-		PopGraphs[i] = PopupPanel_PopGraph1;
-		SetCtrlAttribute(PopPanels[i], PopGraphs[i], ATTR_GRID_COLOR, plotGridColor);
-		SetCtrlAttribute(PopPanels[i], PopGraphs[i], ATTR_GRAPH_BGCOLOR, VAL_TRANSPARENT);
-		SetAxisScalingMode(PopPanels[i], PopGraphs[i], VAL_LEFT_YAXIS, VAL_MANUAL, yAxisRange[0], yAxisRange[1]);
-		PopGPlots[i] = PlotY(PopPanels[i], PopGraphs[i], resultData[i], READ_LENGTH/24, 
-							 VAL_DOUBLE, VAL_THIN_LINE, VAL_EMPTY_SQUARE, VAL_SOLID,1, plotLineColor);
-	}else{
-		SetActivePanel(PopPanels[i]);
-	}
-	
-}
-
-int getGraphIndex(int ctrl){
+int getGraphIndex(int ctrl,int fromWhere){
 	int i = 0;
-	if(tabFlag == 0){ //Child Panel Mode
-		for(i=0; i<validMonNum; i++){
-			if(CPanels[i] == ctrl)
+	switch(fromWhere){
+		case 0: //from Main Panel
+			if(tabFlag == 0){ //Child Panel Mode
+				for(i=0; i<validMonNum; i++){
+					if(CPanels[i] == ctrl)
+						return i;
+				}
+			}else{
+				GetActiveTabPage (panelHdl, tabCtrl, &i);
 				return i;
-		}
-	}else{
-		GetActiveTabPage (panelHdl, tabCtrl, &i);
-		return i;
+			}
+			break;
+		case 1: //from Analysis Panel
+			for(i=0; i<validMonNum; i++){
+				if(ctrl == PopPanels[i])
+					return i;
+			}
+			break;
 	}
 	return i;
 }
+
 char* getStatString(int ctrl){
 	int ctrlID;
 	for(ctrlID=0; ctrlID<validMonNum; ctrlID++){
@@ -587,14 +570,6 @@ int CVICALLBACK ConfigPanelYesBtn(int panel, int control, int event,
 			GetCtrlVal(panel, ConfigP_STOPBITS, &stopBits);
 			GetCtrlVal(panel, ConfigP_INPUTQ, &inQueueSize);
 			GetCtrlVal(panel, ConfigP_OUTPUTQ, &outQueueSize);
-			
-			comPort = 4;
-			baudRate = 115200;
-			parity = 0;
-			dataBits = 8;
-			stopBits = 1;
-			inQueueSize = 512;
-			outQueueSize = 512;
 			refreshDimmedStat();
 			DiscardPanel(panel);
 			break;
@@ -677,7 +652,7 @@ int CVICALLBACK QuitCallback (int panel, int control, int event,
 	}
 	return 0;
 }
-int  CVICALLBACK PopupPanelCallBack(int panel, int event, void *callbackData, 
+int CVICALLBACK PopupPanelCallBack(int panel, int event, void *callbackData, 
 		int eventData1, int eventData2){
 	switch (event){
 		case EVENT_CLOSE:
@@ -892,7 +867,7 @@ void SeperateFunc(unsigned char* finddata){
 	resultCounter ++;
 }
 
-/* 用来在窗口打印 Log 信息 */
+/* 用来在窗口打印Log信息 */
 void showLogInfo(char *msg){
 	CmtScheduleThreadPoolFunction(poolHandle, showLogInfoIn2ndThread, msg, NULL);
 	printf("hello  22");
@@ -906,22 +881,11 @@ int CVICALLBACK showLogInfoIn2ndThread(void *functionData){
 	return 0;
 }
 
-
-int CVICALLBACK FFT_Btn_Callback(int panel, int control, int event,
-		void *callbackData, int eventData1, int eventData2){
-	switch(event){
-		case EVENT_COMMIT:
-
-			break;
-	}
-	return 0;
-}
-
 int CVICALLBACK PopQuitBtn(int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2) {
 	switch (event) {
 		case EVENT_COMMIT:
-
+			closePopupPanel(panel);
 			break;
 	}
 	return 0;
@@ -938,8 +902,95 @@ int CVICALLBACK ring1Callback (int panel, int control, int event,
 	return 0;
 }
 
-/* 下拉控件-窗函数-回调函数 */
-int CVICALLBACK ring2Callback (int panel, int control, int event,
+/* 下拉控件-加窗类型-回调函数 */
+int CVICALLBACK windowTypeCallback(int panel, int control, int event,
+		void *callbackData, int eventData1, int eventData2){
+	switch(event){
+		case EVENT_COMMIT:
+			drawAnalysisResult(panel);
+			break;
+	}
+	return 0;
+}
+
+/* 下拉控件-信号分析处理-回调函数 */
+int CVICALLBACK analysisCallback (int panel, int control, int event,
+		void *callbackData, int eventData1, int eventData2) {
+	int type;
+	switch (event){
+		case EVENT_COMMIT:
+			drawAnalysisResult(panel);
+			break;
+	}
+	return 0;
+}
+
+/* 多个下拉控件-共同调用的函数 */
+void drawAnalysisResult(int panel){
+	int type_2, type_3;
+	int i = getGraphIndex(panel, 1);
+	int pointsNum =  READ_LENGTH/24;
+	double spectrum[pointsNum], df;
+	GetCtrlVal(panel, PopupPanel_RingWindowType, &type_2);
+	GetCtrlVal(panel, PopupPanel_RingFFT, &type_3);	
+	DeleteGraphPlot(panel, PopupPanel_PopGraph2, -1, VAL_IMMEDIATE_DRAW);
+	DeleteGraphPlot(panel, PopupPanel_PopGraph3, -1, VAL_IMMEDIATE_DRAW);
+	//-temp signal1 (panel, PANEL_RING_SIGNALTYPE, EVENT_COMMIT, NULL, 0, 0);   
+	//获得窗函数类型
+	switch(type_2){
+		//对信号加窗
+		case 0://加 汉宁窗
+			HanWin(tempData[i], pointsNum); break;
+		case 1://加 海明窗
+			HamWin(tempData[i], pointsNum); break;
+		case 2://加 布拉克曼窗
+			BkmanWin(tempData[i], pointsNum); break;
+		case 3://加 指数窗
+			ExpWin(tempData[i], pointsNum, 0.01); break;
+		case 4://加 高斯窗
+			GaussWin(tempData[i], pointsNum, 0.2); break;
+		case 5://加 三角窗
+			TriWin(tempData[i], pointsNum);break;
+	}//switch()
+	PlotY(panel, PopupPanel_PopGraph2, tempData[i], pointsNum, 
+			VAL_DOUBLE, VAL_THIN_LINE, VAL_EMPTY_SQUARE, VAL_SOLID, 1, VAL_RED);
+	AutoPowerSpectrum (tempData[i], pointsNum, 1/100, spectrum, &df);
+    /*-temp switch(scaling){
+        case 1:
+            for (j=0; j<(pointsNum/2); j++) 
+                spectrum[j] = 20*(log10(spectrum[j]));
+            break;
+    } temp-*/
+    PlotY(panel, PopupPanel_PopGraph3, spectrum, pointsNum/2,
+          VAL_DOUBLE, VAL_THIN_LINE, VAL_NO_POINT, VAL_SOLID, 1, (i)?VAL_YELLOW:VAL_RED);
+}
+
+/* PopupPanel */
+void popupPanelForGraph(int pHdl){
+	int i = getGraphIndex(pHdl, 0); //Need a index to find one of the six graphs.
+	char title[50];
+	for(int j=0; j<(sizeof(resultData[i])/sizeof(double)); j++)
+		tempData[i][j] = resultData[i][j];
+	// 从uir文件中加载 信号分析面板
+	if(PopPanels[i] <=0 ){
+		if ((PopPanels[i] = LoadPanel(0, "MainPanel.uir", PopupPanel)) < 0)
+			showError(0,0, "Load PopupPanel Error!");
+		DisplayPanel(PopPanels[i]);
+		PopGraphs[i] = PopupPanel_PopGraph1;
+		GetPanelAttribute(pHdl, ATTR_TITLE, title);
+		SetPanelAttribute(PopPanels[i], ATTR_TITLE, title);
+		SetCtrlAttribute(PopPanels[i], PopGraphs[i], ATTR_GRID_COLOR, plotGridColor);
+		SetCtrlAttribute(PopPanels[i], PopGraphs[i], ATTR_GRAPH_BGCOLOR, VAL_TRANSPARENT);
+		//temp SetAxisScalingMode(PopPanels[i], PopGraphs[i], VAL_LEFT_YAXIS, VAL_MANUAL, yAxisRange[0], yAxisRange[1]);
+		PopGPlots[i] = PlotY(PopPanels[i], PopGraphs[i], tempData[i], READ_LENGTH/24, 
+							 VAL_DOUBLE, VAL_THIN_LINE, VAL_EMPTY_SQUARE, VAL_SOLID,1, plotLineColor);
+	}else{
+		SetActivePanel(PopPanels[i]);
+	}
+	
+}
+
+int CVICALLBACK PopSwitcherCallback (int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2) {
 	switch (event) {
 		case EVENT_COMMIT:
@@ -948,8 +999,8 @@ int CVICALLBACK ring2Callback (int panel, int control, int event,
 	}
 	return 0;
 }
-/* 下拉控件-<信号分析处理>-回调函数 */
-int CVICALLBACK analysisCallback (int panel, int control, int event,
+
+int CVICALLBACK PopLogInfoBtn (int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2) {
 	switch (event) {
 		case EVENT_COMMIT:

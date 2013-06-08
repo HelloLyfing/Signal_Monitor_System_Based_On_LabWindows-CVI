@@ -50,32 +50,32 @@ Force Rebuild = False
 [File 0001]
 Path = "/k/Developer/Workbench/Github/My_Graduate_Design/MainCode.c"
 File Type = "CSource"
-Disk Date = 3453403758
+Disk Date = 3453554546
 In Projects = "1,"
 Window Top = 32
 Window Left = 10
-Window Z-Order = 1
-Source Window State = "1,823,835,823,12,23,12,0,0,121,0,1,0,1,0,34,813,0,821,31,401,717,1,0,"
+Window Z-Order = 2
+Source Window State = "1,964,964,964,73,77,77,0,0,80,0,1,0,1,0,20,0,0,893,0,401,717,1,0,"
 
 [File 0002]
 Path = "/k/Developer/Workbench/Github/My_Graduate_Design/MainPanel.uir"
 File Type = "User Interface Resource"
-Disk Date = 3453375519
+Disk Date = 3453555377
 In Projects = "1,"
 Window Top = 62
 Window Left = 26
 Window Height = 326
 Window Width = 717
-Window Z-Order = 2
+Window Z-Order = 1
 
 [File 0003]
 Path = "/k/Developer/Workbench/Github/My_Graduate_Design/MainPanel.h"
 File Type = "Include"
-Disk Date = 3453375519
+Disk Date = 3453555171
 In Projects = "1,"
 Window Top = 152
 Window Left = 74
-Source Window State = "1,47,47,47,9,29,29,0,0,0,0,0,0,0,0,0,65,0,83,22,317,720,1,0,"
+Source Window State = "1,53,53,53,9,34,34,0,3,0,0,0,0,0,0,0,41,0,53,9,317,720,1,0,"
 
 [Build Options 0001]
 Generate Browse Info = True

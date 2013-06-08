@@ -37,25 +37,19 @@
 #define  MainPanel_ID_List                6       /* control type: ring, callback function: (none) */
 #define  MainPanel_TEXTBOX                7       /* control type: textBox, callback function: (none) */
 
-#define  PopupPane                        3       /* callback function: PopupPanelCallBack */
-#define  PopupPane_PopupGraph             2       /* control type: strip, callback function: (none) */
-#define  PopupPane_FFT_Btn                3       /* control type: command, callback function: FFT_Btn_Callback */
-#define  PopupPane_GRAPH                  4       /* control type: graph, callback function: (none) */
-
-#define  PopupPanel                       4       /* callback function: PopupPanelCallBack */
-#define  PopupPanel_GRAPH_ANALYSIS        2       /* control type: graph, callback function: (none) */
+#define  PopupPanel                       3       /* callback function: PopupPanelCallBack */
+#define  PopupPanel_PopGraph3             2       /* control type: graph, callback function: (none) */
 #define  PopupPanel_PopGraph2             3       /* control type: graph, callback function: (none) */
 #define  PopupPanel_PopGraph1             4       /* control type: graph, callback function: (none) */
-#define  PopupPanel_PopQuitBtn            5       /* control type: command, callback function: PopQuitBtn */
-#define  PopupPanel_NUMERIC_PHASE         6       /* control type: numeric, callback function: ring1Callback */
-#define  PopupPanel_NUMERIC_SAMPLEPOINT   7       /* control type: numeric, callback function: ring1Callback */
-#define  PopupPanel_NUMERIC_AMP           8       /* control type: numeric, callback function: ring1Callback */
-#define  PopupPanel_RING                  9       /* control type: ring, callback function: analysisCallback */
-#define  PopupPanel_DECORATION_3          10      /* control type: deco, callback function: (none) */
-#define  PopupPanel_DECORATION            11      /* control type: deco, callback function: (none) */
-#define  PopupPanel_DECORATION_2          12      /* control type: deco, callback function: (none) */
-#define  PopupPanel_RING_WINDOWTYPE       13      /* control type: ring, callback function: ring2Callback */
-#define  PopupPanel_BINARYSWITCH          14      /* control type: binary, callback function: (none) */
+#define  PopupPanel_PopLogInfoBtn         5       /* control type: command, callback function: PopLogInfoBtn */
+#define  PopupPanel_PopQuitBtn            6       /* control type: command, callback function: PopQuitBtn */
+#define  PopupPanel_RingFFT               7       /* control type: ring, callback function: analysisCallback */
+#define  PopupPanel_DECORATION_3          8       /* control type: deco, callback function: (none) */
+#define  PopupPanel_DECORATION            9       /* control type: deco, callback function: (none) */
+#define  PopupPanel_DECORATION_2          10      /* control type: deco, callback function: (none) */
+#define  PopupPanel_RingWindowType        11      /* control type: ring, callback function: windowTypeCallback */
+#define  PopupPanel_PopupSwitcher         12      /* control type: binary, callback function: PopSwitcherCallback */
+#define  PopupPanel_PopLogBox             13      /* control type: textBox, callback function: (none) */
 
 
      /* Menu Bars, Menus, and Menu Items: */
@@ -66,7 +60,7 @@
 #define  MENUBAR_Menu_Control             4
 #define  MENUBAR_Menu_Control_Menu_Pause  5       /* callback function: pauseReceive */
 #define  MENUBAR_Menu3_View               6
-#define  MENUBAR_Menu3_View_M_View_1      7       /* callback function: switchMode_Tab_CPanel */
+#define  MENUBAR_Menu3_View_M_View_1      7       /* callback function: switchViewMode */
 
 
      /* Callback Prototypes: */
@@ -75,16 +69,16 @@ int  CVICALLBACK analysisCallback(int panel, int control, int event, void *callb
 int  CVICALLBACK Config_Com_Btn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK ConfigPanelCancelBtn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK ConfigPanelYesBtn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
-int  CVICALLBACK FFT_Btn_Callback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 void CVICALLBACK menu_Exit(int menubar, int menuItem, void *callbackData, int panel);
 void CVICALLBACK pauseReceive(int menubar, int menuItem, void *callbackData, int panel);
+int  CVICALLBACK PopLogInfoBtn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK PopQuitBtn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
+int  CVICALLBACK PopSwitcherCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK PopupPanelCallBack(int panel, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK QuitCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
-int  CVICALLBACK ring1Callback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
-int  CVICALLBACK ring2Callback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK StartBtnCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
-void CVICALLBACK switchMode_Tab_CPanel(int menubar, int menuItem, void *callbackData, int panel);
+void CVICALLBACK switchViewMode(int menubar, int menuItem, void *callbackData, int panel);
+int  CVICALLBACK windowTypeCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 
 
 #ifdef __cplusplus
