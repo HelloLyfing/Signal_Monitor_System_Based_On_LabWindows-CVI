@@ -25,10 +25,6 @@
 
 static CmtThreadPoolHandle poolHandle = 0;
 static CmtTSQHandle tsqHdl;
-static char filePath[MAX_PATHNAME_LEN];
-
-static CAObjHandle graph3DHdl = 0;
-static CAObjHandle graph3DPlotHdl = 0;
 
 int panelHdl;
 int menuBar; //For right-click popup.
@@ -49,7 +45,10 @@ int CPanels[6]={0}, TPanels[6]={0}, PGraphs[6], PGPlots[6];
 // receiveFlag =1,Receive; =0, pause.
 int receiveFlag = 1, configComFlag = 1;
 double xAxisRange[2], yAxisRange[2]; //x,y坐标轴的标值范围
+
 //Data Reading Writing Relative Vals
+char loadFilePath[MAX_PATHNAME_LEN];
+char writeFilePath[MAX_PATHNAME_LEN];
 int bytesRead;
 int writeTSQEndFlag = 0, readTSQEndFlag = 0;
 int dataLen = 0;
@@ -110,11 +109,12 @@ void runAirplanModel(void);
 void popupPanelForGraph(int pHdl);
 void closePopupPanel(int pHdl);
 void refreshDimmedStat(void);
-void showLogInfo(char *msg);
+void addLog(char *msg, int whichBox, int pHdl);
 void drawAnalysisResult(int panel);
 int seperateData (unsigned char *data);
 int getGraphIndex(int PanelCtrl, int fromWhere);
 char* getStatString(int ctrl);
+void showFileInfo(int panel);
 void CVICALLBACK readDataAndPlot(CmtTSQHandle queueHandle, unsigned int event,
         	int value, void *callbackData);
 int CVICALLBACK receiveDataWriteToTSQ(void *functionData);
@@ -123,7 +123,6 @@ int CVICALLBACK graphCallbackFunc(int panelHandle, int controlID, int event,
 			void *callbackData, int eventData1, int eventData2);
 void CVICALLBACK menuPopupCallback(int menuBarHandle, int menuItemID, 
 	void *callbackData, int panelHandle);
-int CVICALLBACK showLogInfoIn2ndThread(void *functionData);
 
 /*---------------------------------------------------------------------------*/
 // Main Func, entry point
@@ -272,8 +271,8 @@ void CVICALLBACK readDataAndPlot(CmtTSQHandle queueHandle, unsigned int event,
 // 辅助类函数 读取存储文件内容
 /*---------------------------------------------------------------------------*/
 void readDataFromFile(void){
-	Fmt(filePath, "c:\\Users\\Lyfing\\Desktop\\Perfect.dat");
-	FILE *file = fopen(filePath, "r");
+	Fmt(loadFilePath, "c:\\Users\\Lyfing\\Desktop\\Perfect.dat");
+	FILE *file = fopen(loadFilePath, "r");
 	bytesRead = fread(&readData, sizeof(char), READ_LENGTH, file);
 	fclose(file);
 	for(int i=0; i<240; i++){
@@ -613,7 +612,12 @@ void CVICALLBACK menu_Exit(int menuBar, int menuItem, void *callbackData,int pan
   	QuitUserInterface (0);
 }
 
-
+void CVICALLBACK menuBarLoadDataCallback(int menuBar, int menuItem, void *callbackData,int panel){
+	int fileLoadPanel;
+	if((fileLoadPanel = LoadPanel(0, "MainPanel.uir", ReadPanel)) < 0)
+			showError(0,0, "Load ReadPanelPanel Error!");
+	DisplayPanel(fileLoadPanel);
+}
 /*---------------------------------------------------------------------------*/
 // 辅助类函数 新建并初始化线程池
 /*---------------------------------------------------------------------------*/
@@ -868,18 +872,24 @@ void SeperateFunc(unsigned char* finddata){
 }
 
 /* 用来在窗口打印Log信息 */
-void showLogInfo(char *msg){
-	CmtScheduleThreadPoolFunction(poolHandle, showLogInfoIn2ndThread, msg, NULL);
-	printf("hello  22");
+void addLog(char *msg, int whichBox, int pHdl){
+	char msgTemp[256];
+	Fmt(msgTemp,"[%s] -%c ", TimeStr(), 62);
+	strcat(msgTemp, msg);
+	strcat(msgTemp, "\n");
+	if(0 == whichBox){ //Show Log on Main Panel's Log Box
+		InsertTextBoxLine(panelHdl, MainPanel_MainLogBox, 0, msgTemp);
+	}else{
+		int i = getGraphIndex(pHdl, 1);
+		InsertTextBoxLine(PopPanels[i], PopupPanel_PopLogBox, 0, msgTemp);
+	}
 }
 
-int CVICALLBACK showLogInfoIn2ndThread(void *functionData){
+/*-temp int CVICALLBACK showLogInfoIn2ndThread(void *functionData){
 	char title[50], *msg;
-	printf("hello  20");
 	msg = (char *)functionData;
-	printf("hello  24");
 	return 0;
-}
+} temp-*/
 
 int CVICALLBACK PopQuitBtn(int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2) {
@@ -908,6 +918,8 @@ int CVICALLBACK windowTypeCallback(int panel, int control, int event,
 	switch(event){
 		case EVENT_COMMIT:
 			drawAnalysisResult(panel);
+			
+			addLog("加窗类型变为", 1, panel);
 			break;
 	}
 	return 0;
@@ -1005,6 +1017,75 @@ int CVICALLBACK PopLogInfoBtn (int panel, int control, int event,
 	switch (event) {
 		case EVENT_COMMIT:
 
+			break;
+	}
+	return 0;
+}
+
+int CVICALLBACK chooseFileBtnCallback (int panel, int control, int event,
+		void *callbackData, int eventData1, int eventData2) {
+	switch (event) {
+		case EVENT_COMMIT:
+            if (FileSelectPopup ("", "", "", "Select File to Load",
+               		VAL_OK_BUTTON, 0, 0, 1, 1, loadFilePath) <= 0) return 0;
+            showFileInfo(panel);
+			break;
+	}
+	return 0;
+}
+
+void showFileInfo(int panel){
+	char msg[250],temp[250];
+	msg[0] = '\0';
+	strcat(msg, loadFilePath);
+	strcat(msg, ";\n\n");
+	long len; 
+	GetFileSize(loadFilePath, &len);
+	Fmt(temp, "文件大小： %d Bytes \n\n", len);
+	strcat(msg, temp);
+	double timeFrequency;GetCtrlVal(panel, ReadPanel_SetReadSpeedRing, &timeFrequency);
+	double timeLast = len/READ_LENGTH*timeFrequency;
+	Fmt(temp, "预计持续时长： %f s", timeLast);
+	strcat(msg, temp);
+	SetCtrlVal(panel, ReadPanel_FileInfoDetail, msg);
+}
+int CVICALLBACK finishChooseFileBtnCallback (int panel, int control, int event,
+		void *callbackData, int eventData1, int eventData2) {
+	switch (event) {
+		case EVENT_COMMIT:
+			DiscardPanel(panel);
+			configComFlag = 0;
+			refreshDimmedStat();
+			break;
+	}
+	return 0;
+}
+
+/* 信号分析窗口-原始信号图表-回调函数 */
+int CVICALLBACK PopGraph1Callback (int panel, int control, int event,
+		void *callbackData, int eventData1, int eventData2) {
+	switch (event) {
+		case EVENT_LEFT_DOUBLE_CLICK:
+			int i = getGraphIndex(panel, 1);
+			for(int j=0; j<(sizeof(resultData[i])/sizeof(double)); j++)
+				tempData[i][j] = resultData[i][j];
+			DeleteGraphPlot(panel, PopGraphs[i], -1, VAL_DELAYED_DRAW);
+			PopGPlots[i] = PlotY(PopPanels[i], PopGraphs[i], tempData[i], READ_LENGTH/24, 
+							 VAL_DOUBLE, VAL_THIN_LINE, VAL_EMPTY_SQUARE, VAL_SOLID,1, plotLineColor);
+			
+			break;
+	}
+	return 0;
+}
+
+/* 读取文件面板-下拉控件-读取速度 */
+int CVICALLBACK readSpeedCallback (int panel, int control, int event,
+		void *callbackData, int eventData1, int eventData2) {
+	switch (event) {
+		case EVENT_COMMIT:
+			if(strlen(loadFilePath) <= 2)
+				break;
+			showFileInfo(panel);
 			break;
 	}
 	return 0;

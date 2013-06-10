@@ -35,12 +35,12 @@
 #define  MainPanel_Start                  4       /* control type: command, callback function: StartBtnCallback */
 #define  MainPanel_BINARYSWITCH_2         5       /* control type: binary, callback function: (none) */
 #define  MainPanel_ID_List                6       /* control type: ring, callback function: (none) */
-#define  MainPanel_TEXTBOX                7       /* control type: textBox, callback function: (none) */
+#define  MainPanel_MainLogBox             7       /* control type: textBox, callback function: (none) */
 
 #define  PopupPanel                       3       /* callback function: PopupPanelCallBack */
 #define  PopupPanel_PopGraph3             2       /* control type: graph, callback function: (none) */
 #define  PopupPanel_PopGraph2             3       /* control type: graph, callback function: (none) */
-#define  PopupPanel_PopGraph1             4       /* control type: graph, callback function: (none) */
+#define  PopupPanel_PopGraph1             4       /* control type: graph, callback function: PopGraph1Callback */
 #define  PopupPanel_PopLogInfoBtn         5       /* control type: command, callback function: PopLogInfoBtn */
 #define  PopupPanel_PopQuitBtn            6       /* control type: command, callback function: PopQuitBtn */
 #define  PopupPanel_RingFFT               7       /* control type: ring, callback function: analysisCallback */
@@ -51,31 +51,48 @@
 #define  PopupPanel_PopupSwitcher         12      /* control type: binary, callback function: PopSwitcherCallback */
 #define  PopupPanel_PopLogBox             13      /* control type: textBox, callback function: (none) */
 
+#define  ReadPanel                        4
+#define  ReadPanel_PathString             2       /* control type: string, callback function: (none) */
+#define  ReadPanel_FinishChooseFileBtn    3       /* control type: command, callback function: finishChooseFileBtnCallback */
+#define  ReadPanel_ChooseFileBtn          4       /* control type: command, callback function: chooseFileBtnCallback */
+#define  ReadPanel_SetReadSpeedRing       5       /* control type: ring, callback function: readSpeedCallback */
+#define  ReadPanel_TEXTMSG                6       /* control type: textMsg, callback function: (none) */
+#define  ReadPanel_DECORATION             7       /* control type: deco, callback function: (none) */
+#define  ReadPanel_DECORATION_2           8       /* control type: deco, callback function: (none) */
+#define  ReadPanel_FileInfoDetail         9       /* control type: textMsg, callback function: (none) */
+#define  ReadPanel_TEXTMSG_2              10      /* control type: textMsg, callback function: (none) */
+
 
      /* Menu Bars, Menus, and Menu Items: */
 
 #define  MENUBAR                          1
 #define  MENUBAR_Menu_File                2
-#define  MENUBAR_Menu_File_Menu_Exit      3       /* callback function: menu_Exit */
-#define  MENUBAR_Menu_Control             4
-#define  MENUBAR_Menu_Control_Menu_Pause  5       /* callback function: pauseReceive */
-#define  MENUBAR_Menu3_View               6
-#define  MENUBAR_Menu3_View_M_View_1      7       /* callback function: switchViewMode */
+#define  MENUBAR_Menu_File_Menubar_LoadData 3     /* callback function: menuBarLoadDataCallback */
+#define  MENUBAR_Menu_File_Menu_Exit      4       /* callback function: menu_Exit */
+#define  MENUBAR_Menu_Control             5
+#define  MENUBAR_Menu_Control_Menu_Pause  6       /* callback function: pauseReceive */
+#define  MENUBAR_Menu3_View               7
+#define  MENUBAR_Menu3_View_M_View_1      8       /* callback function: switchViewMode */
 
 
      /* Callback Prototypes: */
 
 int  CVICALLBACK analysisCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
+int  CVICALLBACK chooseFileBtnCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK Config_Com_Btn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK ConfigPanelCancelBtn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK ConfigPanelYesBtn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
+int  CVICALLBACK finishChooseFileBtnCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 void CVICALLBACK menu_Exit(int menubar, int menuItem, void *callbackData, int panel);
+void CVICALLBACK menuBarLoadDataCallback(int menubar, int menuItem, void *callbackData, int panel);
 void CVICALLBACK pauseReceive(int menubar, int menuItem, void *callbackData, int panel);
+int  CVICALLBACK PopGraph1Callback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK PopLogInfoBtn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK PopQuitBtn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK PopSwitcherCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK PopupPanelCallBack(int panel, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK QuitCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
+int  CVICALLBACK readSpeedCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK StartBtnCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 void CVICALLBACK switchViewMode(int menubar, int menuItem, void *callbackData, int panel);
 int  CVICALLBACK windowTypeCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
