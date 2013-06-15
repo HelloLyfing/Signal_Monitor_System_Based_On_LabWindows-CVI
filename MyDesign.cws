@@ -13,10 +13,10 @@ Number of Projects = 1
 Active Project = 1
 Project 0001 = "MyDesign.prj"
 Drag Bar Left = 262
-Window Top = 30
-Window Left = 6
-Window Bottom = 562
-Window Right = 966
+Window Top = 397
+Window Left = 229
+Window Bottom = 929
+Window Right = 1303
 Maximized = True
 Maximized Children = True
 Max32 Number Of Errors = 20
@@ -29,7 +29,7 @@ Save Changes Before Running = "Always"
 Hide Windows = False
 Break At First Statement = False
 Sort Type = "File Name"
-Number of Opened Files = 2
+Number of Opened Files = 4
 Window Confinement Region Enabled = True
 MainColumnWidth = 245
 FileDateColumnWidth = 70
@@ -50,17 +50,17 @@ Force Rebuild = False
 [File 0001]
 Path = "/k/Developer/Workbench/Github/My_Graduate_Design/MainCode.c"
 File Type = "CSource"
-Disk Date = 3453722989
+Disk Date = 3454132008
 In Projects = "1,"
 Window Top = 32
 Window Left = 10
 Window Z-Order = 1
-Source Window State = "1,1043,1043,1043,23,30,30,0,0,121,0,1,0,1,0,26,1030,0,1036,0,401,717,1,0,"
+Source Window State = "1,403,403,403,18,22,22,0,0,121,0,1,0,1,0,21,953,0,961,26,401,717,1,0,"
 
 [File 0002]
 Path = "/k/Developer/Workbench/Github/My_Graduate_Design/MainPanel.uir"
 File Type = "User Interface Resource"
-Disk Date = 3453722620
+Disk Date = 3454128834
 In Projects = "1,"
 Window Top = 62
 Window Left = 26
@@ -71,11 +71,22 @@ Window Z-Order = 2
 [File 0003]
 Path = "/k/Developer/Workbench/Github/My_Graduate_Design/MainPanel.h"
 File Type = "Include"
-Disk Date = 3453722574
+Disk Date = 3454041511
 In Projects = "1,"
 Window Top = 152
 Window Left = 74
-Source Window State = "1,57,57,57,9,35,35,0,3,80,0,0,0,0,0,16,77,0,57,9,317,720,1,0,"
+Window Z-Order = 3
+Source Window State = "1,49,49,49,9,34,34,0,3,80,0,0,0,0,0,16,38,0,49,9,317,720,1,0,"
+
+[File 0004]
+Path = "/c/My_Install_Space/National_Instruments/LabWindows_CVI/include/userint.h"
+File Type = "Include"
+Disk Date = 3360708000
+In Projects = ""
+Window Top = 32
+Window Left = 10
+Window Z-Order = 4
+Source Window State = "1,2448,2448,2448,12,24,24,0,3,80,0,0,0,0,0,22,2431,0,2448,12,425,720,1,0,"
 
 [Build Options 0001]
 Generate Browse Info = True
@@ -112,4 +123,11 @@ External Process Path = ""
 [Command Line Args 0001]
 Command Line Args = ""
 Working Directory = ""
+
+[Watch Point 1]
+Watch Expression = "signalShowingStat"
+Update Display Continuously = True
+Break When Value Changes = False
+Scope = "Global To Project"
+DllName = "k:\\Developer\\Workbench\\Github\\My_Graduate_Design\\MyDesign.exe"
 

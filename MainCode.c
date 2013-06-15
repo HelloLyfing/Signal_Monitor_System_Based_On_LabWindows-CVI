@@ -49,17 +49,21 @@ double xAxisRange[2], yAxisRange[2]; //x,y坐标轴的标值范围
 //Data Reading Writing Relative Vals
 char loadFilePath[MAX_PATHNAME_LEN];
 char writeFilePath[MAX_PATHNAME_LEN];
+FILE *loadFP; FILE *writeFP;
+long loadFPP, writeFPP; //FPP=File Pointer Position
+double fileLoadSpeed;
 int bytesRead;
 int writeTSQEndFlag = 0, readTSQEndFlag = 0;
 int dataLen = 0;
-
+int dataSrc; //0,Device Port| 1,Read File| 2, Simulating Data
+int isDataAcqRunning;
 //Ploting args
 int plotBakgColor;
 int plotLineColor;
 int plotGridColor;
-int plotSelectLineHdl = 0; //temp
+
 //Showing stat,signal's showing status
-int signalShowingStat[6] = {0};
+int signalShowingStat[6];
 char statString[30];
 
 int cursorsValidNum = 0;
@@ -92,7 +96,7 @@ static void cleanGarbage(void);
 static HRESULT RefreshControls(void);
 
 void initCOMConfig(void);
-void showError (int ,int, char*);
+void showError (char* msg);
 void readDataFromFile(void);
 void pauseDataAcq(void);
 void startDataAcq(void);
@@ -105,16 +109,21 @@ void initVars(void);
 void generateSimulateData(unsigned char *data);
 void manageGraphCallbackFunc(void);
 void showMenuPopup(int pHdl, int ctrlID, int xPoint, int yPoint);
+void showLogBoxRightClickMenu(int pHdl, int ctrlID, int xPoint, int yPoint);
 void runAirplanModel(void);
 void popupPanelForGraph(int pHdl);
 void closePopupPanel(int pHdl);
 void refreshDimmedStat(void);
 void addLog(char *msg, int whichBox, int pHdl);
 void drawAnalysisResult(int panel);
+void showFileInfo(int panel);
+void initDirectorySets(void);
+void stopDataAcq(void);
+
+char* getStatString(int ctrl);
 int seperateData (unsigned char *data);
 int getGraphIndex(int PanelCtrl, int fromWhere);
-char* getStatString(int ctrl);
-void showFileInfo(int panel);
+
 void CVICALLBACK readDataAndPlot(CmtTSQHandle queueHandle, unsigned int event,
         	int value, void *callbackData);
 int CVICALLBACK receiveDataWriteToTSQ(void *functionData);
@@ -123,6 +132,8 @@ int CVICALLBACK graphCallbackFunc(int panelHandle, int controlID, int event,
 			void *callbackData, int eventData1, int eventData2);
 void CVICALLBACK menuPopupCallback(int menuBarHandle, int menuItemID, 
 	void *callbackData, int panelHandle);
+void CVICALLBACK logBoxRightClickMenuCallback(int menuBarHandle, int menuItemID, 
+			void *callbackData, int panelHandle);
 
 /*---------------------------------------------------------------------------*/
 // Main Func, entry point
@@ -154,7 +165,7 @@ void initVars(void){
 	cWidth = (pWidth - extraRight - averSpaceH*3)/3;
 	cHeight = (pHeight - averSpaceV*2)/2;
 	plotBakgColor = MakeColor(255, 205, 105); //Set background color of graphs
-	plotGridColor = MakeColor(0, 158, 0);
+	plotGridColor = MakeColor(0, 18, 0);
 	plotLineColor = MakeColor(249, 249, 50);
 	popPanelIsPloting = 0;
 	//Create a ThreadPool
@@ -166,35 +177,51 @@ void initVars(void){
 	tabHeight = pHeight - averSpaceV*3;
 	//x,y坐标的标值范围
 	xAxisRange[0] = 0.0, xAxisRange[1] = 9.0; //temp
-	yAxisRange[0] = 0.0, yAxisRange[1] = 5.0;
+	yAxisRange[0] = -3.0, yAxisRange[1] = 3.0;
 	
+	dataSrc = 0;
+	for(int i=0; i<validMonNum; i++)
+		signalShowingStat[i] = 1;
+	//init the necessary Directory this system needs
+	initDirectorySets();
 	refreshDimmedStat();
+	isDataAcqRunning = 0;
 }
 /*---------------------------------------------------------------------------*/
 // 程序退出时，清理占用的内存和垃圾 
 /*---------------------------------------------------------------------------*/
 static void cleanGarbage(void){
 	pauseDataAcq();
+	stopDataAcq();
 	CmtDiscardTSQ(tsqHdl);
-	CmtDiscardThreadPool (poolHandle);
+	CmtDiscardThreadPool(poolHandle);
 	DiscardPanel(panelHdl);
 }
 
 /*---------------------------------------------------------------------------*/
-// [Start] Button
+// [Control Showing] Button
 /*---------------------------------------------------------------------------*/
-int CVICALLBACK StartBtnCallback(int panel, int control, int event,
+int CVICALLBACK ControlShowingBtnCallback(int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2){
 	switch (event){
 		case EVENT_COMMIT:
-			if (CPanels[0]>0 || TPanels[0]>0) break;
-			initChildPanels();
-			CmtNewTSQ (READ_LENGTH, sizeof(char), OPT_TSQ_DYNAMIC_SIZE, &tsqHdl);
-			CmtInstallTSQCallback (tsqHdl, EVENT_TSQ_ITEMS_IN_QUEUE, READ_LENGTH,
-				readDataAndPlot, NULL, CmtGetCurrentThreadID(), NULL);
-			startDataAcq();
+			if(CPanels[0] <=0 && TPanels[0]<=0){
+				initChildPanels();
+				CmtNewTSQ(READ_LENGTH, sizeof(char), OPT_TSQ_DYNAMIC_SIZE, &tsqHdl);
+				CmtInstallTSQCallback (tsqHdl, EVENT_TSQ_ITEMS_IN_QUEUE, READ_LENGTH,
+					readDataAndPlot, NULL, CmtGetCurrentThreadID(), NULL);
+			}
+			int i; GetCtrlVal(panel, MainPanel_Signal_ID_List, &i);
+			if(i == 6){
+				for(int j=0; j<validMonNum; j++)
+					signalShowingStat[j] = 1;//temp signalShowingStat[j]==1?0:1;
+			}else{
+				signalShowingStat[i] = signalShowingStat[i]==1?0:1;
+			}
+			if( isDataAcqRunning == 0)
+				startDataAcq();
 			break;
-	}
+	}//switch()
 	return 0;
 }
 
@@ -202,23 +229,114 @@ int CVICALLBACK StartBtnCallback(int panel, int control, int event,
 // In another thread, receives data and writes them into TSQ 
 /*---------------------------------------------------------------------------*/
 int CVICALLBACK receiveDataWriteToTSQ(void *functionData){
-	///OpenComConfig(comPort, "", baudRate, parity, dataBits, stopBits, inQueueSize, outQueueSize);
-	//Fmt(filePath, "c:\\Users\\Lyfing\\Desktop\\temp\\Perfect.dat");
-	//FILE *file = fopen(filePath, "r");
-	while(receiveFlag){
-		///bytesRead = ComRd(comPort, readData, READ_LENGTH);
-		// fwrite(&readData, sizeof(char), READ_LENGTH, file);
-		writeTSQEndFlag = 1;
-		generateSimulateData(readData);
-		CmtWriteTSQData(tsqHdl, &readData, READ_LENGTH, TSQ_INFINITE_TIMEOUT, NULL);
-		Delay(0.6);
-		writeTSQEndFlag = 0;
+	dataSrc = 0;
+	int storeFileFlag = 0;
+	GetCtrlVal(panelHdl, MainPanel_StoreTheData_Switch, &storeFileFlag);
+	if(0 == dataSrc){ //read data from [device port]
+		//if(OpenComConfig(comPort, "", baudRate, parity, 
+		//				 dataBits, stopBits, inQueueSize, outQueueSize) <0)
+		//	showError("Failed to open RS232 port!");
+		if(storeFileFlag > 0){ 
+			if( writeFPP >0){
+				writeFP = fopen(writeFilePath, "a");
+				if(writeFP == NULL) 
+					showError("Open WriteFile Failed");
+				fseek(writeFP, writeFPP, SEEK_SET);
+			}else{	
+				SYSTEMTIME localTime;
+				char dirName[MAX_PATHNAME_LEN];
+				char fileName[200];
+				GetProjectDir(dirName);
+				strcat(dirName, "\\DataStorage");
+				GetLocalTime(&localTime);
+				sprintf(fileName, "%04d-%d-%d,%d_%02d_%02d.dat", 
+						localTime.wYear, localTime.wMonth, localTime.wDay,
+						localTime.wHour, localTime.wMinute, localTime.wSecond);
+				MakePathname(dirName, fileName, writeFilePath);
+				writeFP = fopen(writeFilePath, "a");
+				if(writeFP == NULL) showError("Open WriteFile Failed");
+			}
+		}//if(storeFileFlag)
+	}else if(1 == dataSrc){ //read data from [file]
+		loadFP = fopen(loadFilePath, "r");
+		if(loadFP == NULL){ 
+			showError("Load File Failed");
+			return -1;
+		}
+		fseek(loadFP, loadFPP, SEEK_SET);
+		printf("loadFPP=%d", loadFPP);
+	}else{ //[simulating data]
 	}
-	///CloseCom(comPort);
-	// fclose(file);
+	GetCtrlVal(panelHdl, MainPanel_StoreTheData_Switch, &storeFileFlag);
+	while(receiveFlag){
+		writeTSQEndFlag = 1;
+		switch(dataSrc){
+			case 0:
+				//bytesRead = ComRd(comPort, readData, READ_LENGTH);
+				generateSimulateData(readData);
+				if(storeFileFlag > 0)
+					fwrite(readData, sizeof(char), READ_LENGTH, writeFP);
+				Delay(0.1);
+				break;
+			case 1:
+				Delay(fileLoadSpeed);
+				if(!feof(loadFP)){
+					bytesRead = fread(readData, sizeof(char), READ_LENGTH, loadFP);
+				}else{
+					receiveFlag = 0;
+					MessagePopup("Reach The End", "All data in this file has been read !");
+				}
+				break;
+			case 2:
+				generateSimulateData(readData);
+				Delay(0.1);
+				break;
+		}//switch()
+		CmtWriteTSQData(tsqHdl, &readData, READ_LENGTH, TSQ_INFINITE_TIMEOUT, NULL);
+		writeTSQEndFlag = 0;
+	}//while()
+	switch(dataSrc){
+		case 0:
+			//CloseCom(comPort);
+			if(storeFileFlag >0){
+				if(!feof(writeFP))
+					writeFPP = ftell(writeFP);
+				fclose(writeFP);
+				writeFP = NULL;
+			}
+			break;
+		case 1:
+			if(!feof(loadFP))
+				loadFPP = ftell(loadFP);
+			printf("loadFPP=%d", loadFPP);
+			fclose(loadFP);
+			loadFP = NULL;
+			break;
+	}//switch()
+	addLog("End-Acq", 0, panelHdl);
 	return 0;
 }
 
+/* Init the Directory Sets this System needs */
+void initDirectorySets(void){
+	char dirName[MAX_PATHNAME_LEN];
+	char DataDirPath[MAX_PATHNAME_LEN];
+	char LogDirPath[MAX_PATHNAME_LEN];
+	GetProjectDir(dirName);
+	sprintf(DataDirPath, "%s\\DataStorage", dirName);
+	sprintf(LogDirPath, "%s\\Logs", dirName);
+	printf("%s\n%s", DataDirPath, LogDirPath);
+	int oldValue;
+	oldValue = SetBreakOnLibraryErrors(0);
+	int isDataDirExisted = MakeDir(DataDirPath);
+	int isLogDirExisted = MakeDir(LogDirPath);
+	SetBreakOnLibraryErrors (oldValue);
+	if(isDataDirExisted == 0)
+		addLog("Successfully create the Directory:\n\"DataStorage\" and \"Logs\"", 0, panelHdl);
+	else if( isDataDirExisted == -9)
+		addLog("\"DataStorage\" and \"Logs\" \nDirectory has already existed!", 0, panelHdl);
+	
+}
 /* Run func in another thread according to functionType */
 void runSecondThread(int functionType, void *data){
 	switch(functionType){
@@ -232,7 +350,7 @@ void runSecondThread(int functionType, void *data){
 // In another thread, perform the Read data and Plot data actions.
 /*---------------------------------------------------------------------------*/	
 void CVICALLBACK readDataAndPlot(CmtTSQHandle queueHandle, unsigned int event,
-                                int value, void *callbackData){
+                     int value, void *callbackData){
 	unsigned char data[READ_LENGTH];
 	int tsqRValue = value, tsqREvent = event; //Thread Safe Result Value.
 	switch (tsqREvent){
@@ -241,44 +359,25 @@ void CVICALLBACK readDataAndPlot(CmtTSQHandle queueHandle, unsigned int event,
             while (tsqRValue >= READ_LENGTH){
                 CmtReadTSQData(tsqHdl, data, READ_LENGTH, TSQ_INFINITE_TIMEOUT, 0);
 				/* Start to calculate the 陀螺仪的x,y,z 以及加计的x,y,z */
-				resultCounter = 0; //用来重新 自增计数 resultData[x][resultCounter]中的采集次数
+				resultCounter = 0; //用来重新自增计数 resultData[x][resultCounter]中的采集次数
 				seperateData(&data[0]);
-				/* Plot the data. Doing any signal-processing/data-analysis stuff here */
+				/* Plot the data. */
                 if(tabFlag==0){ //Child Panels Mode
 					for(int i=0; i<validMonNum; i++){
-						PlotStripChart(CPanels[i], PGraphs[i], resultData[i], READ_LENGTH/24, 0, 0, VAL_DOUBLE);
+						if(1 == signalShowingStat[i]){
+							PlotStripChart(CPanels[i], PGraphs[i], resultData[i], READ_LENGTH/24, 0, 0, VAL_DOUBLE);
+						}
 					}
 				}else{ //Tab pages mode
 					int i = 0;
 					GetActiveTabPage (panelHdl, tabCtrl, &i);
-					PlotStripChart(TPanels[i], PGraphs[i], resultData[i], READ_LENGTH/24, 0, 0, VAL_DOUBLE);
+					if(1 == signalShowingStat[i])
+						PlotStripChart(TPanels[i], PGraphs[i], resultData[i], READ_LENGTH/24, 0, 0, VAL_DOUBLE);
 				}
-				/*-temp popPanelIsPloting = 1;
-				for(int i=0; i<validMonNum; i++){
-					if( PopPanels[i]>0 ){
-						PlotY(PopPanels[i], PopGraphs[i], resultData[i], READ_LENGTH/24, VAL_DOUBLE, VAL_THIN_LINE,
-               				   VAL_EMPTY_SQUARE, VAL_SOLID, 1, plotLineColor);
-					}
-				}
-				popPanelIsPloting = 0; temp-*/
 				tsqRValue -= READ_LENGTH;
             }
             break;
     }//Switch()
-}
-
-/*---------------------------------------------------------------------------*/ 
-// 辅助类函数 读取存储文件内容
-/*---------------------------------------------------------------------------*/
-void readDataFromFile(void){
-	Fmt(loadFilePath, "c:\\Users\\Lyfing\\Desktop\\Perfect.dat");
-	FILE *file = fopen(loadFilePath, "r");
-	bytesRead = fread(&readData, sizeof(char), READ_LENGTH, file);
-	fclose(file);
-	for(int i=0; i<240; i++){
-		if( i> 0 && i%24 == 0){ printf("-------------------\n");}
-		printf("char[%d] = %x\n", i,readData[i]);
-	}
 }
 
 /*---------------------------------------------------------------------------*/
@@ -295,20 +394,31 @@ void initCOMConfig(void){
 }
 
 /*---------------------------------------------------------------------------*/
-// 暂停、恢复数据采集
+// 暂停、开始及结束数据采集
 /*---------------------------------------------------------------------------*/	
 void startDataAcq(void){
 	if(tsqHdl > 0)
-	CmtFlushTSQ(tsqHdl, TSQ_FLUSH_ALL, NULL);
+		CmtFlushTSQ(tsqHdl, TSQ_FLUSH_ALL, NULL);
 	receiveFlag = 1;
 	runSecondThread(beginDataAcqType, NULL);
+	addLog("Begin Signal Acq !", 0, panelHdl);
+	isDataAcqRunning = 0;
 }
 void pauseDataAcq(void){
 	receiveFlag = 0;
 	//如果 write to TSQ process 没有完成，则等待完成
-	while( writeTSQEndFlag != 0){
-		Delay(0.01);
-	}
+	while( writeTSQEndFlag != 0)
+		Delay(0.005);
+	addLog("Pause Signal Acq !", 0, panelHdl);
+	isDataAcqRunning = 0;
+}
+void stopDataAcq(void){
+	receiveFlag = 0;
+	while( writeTSQEndFlag != 0)
+		Delay(0.005);
+	writeFPP = 0;
+	addLog("Stop Signal Acq !", 0, panelHdl);
+	isDataAcqRunning = 0;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -334,11 +444,9 @@ void initChildPanels(void){
 		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_GRID_COLOR, plotGridColor);
 		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_EDGE_STYLE, VAL_FLAT_EDGE);		
 		SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_SCROLL_MODE, VAL_CONTINUOUS);
-		SetAxisScalingMode(CPanels[i], PGraphs[i], VAL_LEFT_YAXIS, VAL_MANUAL, yAxisRange[0], yAxisRange[1]);
-		///SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_ENABLE_ZOOM_AND_PAN, 1);
-		///SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_ZOOM_STYLE, VAL_ZOOM_XAXIS);
+		//SetAxisScalingMode(CPanels[i], PGraphs[i], VAL_LEFT_YAXIS, VAL_MANUAL, yAxisRange[0], yAxisRange[1]);
+		//SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_YFORMAT,VAL_FLOATING_PT_FORMAT);
 	}
-	//canvasCtrl = createCanvas(CPanels[0]); //temp
 	manageGraphCallbackFunc();
 	
 }
@@ -348,6 +456,7 @@ void initChildPanels(void){
 /*---------------------------------------------------------------------------*/	
 void CVICALLBACK switchViewMode(int menuBar, int menuItem, void *callbackData,
 		int panel){
+	int tempReceiveFlag = receiveFlag;
 	pauseDataAcq();
 	if(tabFlag == 0){ //Child-Panel => Tab-Pages
 		//创建Tab
@@ -365,7 +474,7 @@ void CVICALLBACK switchViewMode(int menuBar, int menuItem, void *callbackData,
 			GetPanelHandleFromTabPage(panelHdl, tabCtrl, i, &TPanels[i]);
 			SetCtrlAttribute(TPanels[i], PGraphs[i], ATTR_WIDTH, tabWidth-3);
 			SetCtrlAttribute(TPanels[i], PGraphs[i], ATTR_HEIGHT, tabHeight-15);
-			SetAxisScalingMode(TPanels[i], PGraphs[i], VAL_LEFT_YAXIS, VAL_MANUAL, yAxisRange[0], yAxisRange[1]);
+			//SetAxisScalingMode(TPanels[i], PGraphs[i], VAL_LEFT_YAXIS, VAL_MANUAL, yAxisRange[0], yAxisRange[1]);
 		}
 		tabFlag = 1;
 		for(int i=0; i<validMonNum; i++){
@@ -382,7 +491,6 @@ void CVICALLBACK switchViewMode(int menuBar, int menuItem, void *callbackData,
 			if(PGraphs[i]>0){
 				SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_WIDTH, cWidth);
 				SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_WIDTH, cWidth);
-				//temp SetCtrlAttribute(CPanels[i], PGraphs[i], ATTR_NUM_CURSORS, 0);
 			}
 		}
 		tabFlag = 0;
@@ -393,7 +501,17 @@ void CVICALLBACK switchViewMode(int menuBar, int menuItem, void *callbackData,
 		DiscardCtrl(panelHdl, tabCtrl);
 		tabCtrl = 0;
 	}//else
-	startDataAcq();
+	receiveFlag = tempReceiveFlag;
+	if(receiveFlag == 0){
+		if(tabFlag == 0){
+			for(int i=0; i<validMonNum; i++)
+				PlotStripChart(CPanels[i], PGraphs[i], resultData[i], READ_LENGTH/24, 0, 0, VAL_DOUBLE);
+		}else{
+			PlotStripChart(TPanels[0], PGraphs[0], resultData[0], READ_LENGTH/24, 0, 0, VAL_DOUBLE);
+		}
+	}else{
+		startDataAcq();
+	}
 }
 
 /*---------------------------------------------------------------------------*/ 
@@ -440,7 +558,7 @@ static int createChildPanel(char title[], int index){
 }
 
 /*---------------------------------------------------------------------------*/
-// A Manager to Install or Uninstall Graphs' call back func.
+// A Manager to Install or Graphs' call back func.
 /*---------------------------------------------------------------------------*/
 void manageGraphCallbackFunc(void){
 	for(int i=0; i<validMonNum; i++){
@@ -452,19 +570,20 @@ void manageGraphCallbackFunc(void){
 int CVICALLBACK graphCallbackFunc(int panelHandle, int controlID, int event, 
 		void *callbackData, int eventData1, int eventData2){
 	int pHdl = panelHandle, ctrlID = controlID;
+	int i = getGraphIndex(panelHandle, 0);
 	int x = eventData2, y = eventData1;
-	char msg[256] = {'0'};
 	switch(event){
 		case EVENT_LEFT_CLICK:
-			
+			signalShowingStat[i]= signalShowingStat[i]==0?1:0;		
+			break;
+		case EVENT_LEFT_DOUBLE_CLICK:
+			signalShowingStat[i]= signalShowingStat[i]==0?1:0;
+			popupPanelForGraph(panelHandle);
 			break;
 		case EVENT_RIGHT_CLICK:
 			showMenuPopup(pHdl, ctrlID, x, y);
 			break;
-		case EVENT_LEFT_DOUBLE_CLICK:
-			popupPanelForGraph(panelHandle);
-			break;
-	}
+	}//switch()
 	return 0;
 }
 
@@ -477,14 +596,14 @@ void showMenuPopup(int pHdl, int ctrlID, int xPoint, int yPoint){
 	int menuIDForPop = NewMenu(menuBar, "" , -1);
 	char openStr[25]="Open Analysis Window";
 	char closeStr[25]="Close Analysis Window";
+	char pauseStr[20] = "Pause";
+	char startStr[20] = "Start";
 	if(tabFlag == 0){
-		NewMenuItem(menuBar, menuIDForPop, "Pause", -1, 0, menuPopupCallback, NULL);
+		NewMenuItem(menuBar, menuIDForPop, signalShowingStat[i]>0?pauseStr:startStr, -1, 0, menuPopupCallback, NULL);
 		NewMenuItem(menuBar, menuIDForPop, PopPanels[i]>0?closeStr:openStr, -1, 0, menuPopupCallback, NULL);
-		NewMenuItem(menuBar, menuIDForPop, "Temp", -1, 0, menuPopupCallback, NULL);
 	}else{
-		NewMenuItem(menuBar, menuIDForPop, "Pause", -1, 0, menuPopupCallback, NULL);
+		NewMenuItem(menuBar, menuIDForPop, signalShowingStat[i]>0?pauseStr:startStr, -1, 0, menuPopupCallback, NULL);
 		NewMenuItem(menuBar, menuIDForPop, PopPanels[i]>0?closeStr:openStr, -1, 0, menuPopupCallback, NULL);
-		NewMenuItem(menuBar, menuIDForPop, "Temp", -1, 0, menuPopupCallback, NULL);
 	}//if-else
 	RunPopupMenu(menuBar, menuIDForPop, 
 		pHdl, yPoint, xPoint, 0, 0, 0, 0);
@@ -497,6 +616,7 @@ void CVICALLBACK menuPopupCallback(int menuBarHandle, int menuItemID,
 	int i = getGraphIndex(panelHandle, 0);
 	switch(menuItemID){
 		case 3:
+			signalShowingStat[i] = signalShowingStat[i]>0?0:1;
 			break;
 		case 4:
 			if(PopPanels[i]>0)
@@ -504,28 +624,26 @@ void CVICALLBACK menuPopupCallback(int menuBarHandle, int menuItemID,
 			else
 				popupPanelForGraph(panelHandle);
 			break;
-		case 5:
-			break;
 	}
 }
 
-int getGraphIndex(int ctrl,int fromWhere){
+int getGraphIndex(int pHdl,int fromWhere){
 	int i = 0;
 	switch(fromWhere){
 		case 0: //from Main Panel
 			if(tabFlag == 0){ //Child Panel Mode
 				for(i=0; i<validMonNum; i++){
-					if(CPanels[i] == ctrl)
+					if( pHdl == CPanels[i])
 						return i;
 				}
 			}else{
-				GetActiveTabPage (panelHdl, tabCtrl, &i);
+				GetActiveTabPage(panelHdl, tabCtrl, &i);
 				return i;
 			}
 			break;
 		case 1: //from Analysis Panel
 			for(i=0; i<validMonNum; i++){
-				if(ctrl == PopPanels[i])
+				if(pHdl == PopPanels[i])
 					return i;
 			}
 			break;
@@ -571,6 +689,7 @@ int CVICALLBACK ConfigPanelYesBtn(int panel, int control, int event,
 			GetCtrlVal(panel, ConfigP_OUTPUTQ, &outQueueSize);
 			refreshDimmedStat();
 			DiscardPanel(panel);
+			//dataSrc = 0;
 			break;
 	}
 	return 0;
@@ -590,7 +709,7 @@ void refreshDimmedStat(void){
 	//configComFlag =1, dimmed; =0, enabled.
 	int Ctrls[2]={0}; //Object control
 	int menuCtrls[5]={0}; //Menu control
-	Ctrls[0] = MainPanel_Start;
+	Ctrls[0] = MainPanel_ControlBtn;
 	menuCtrls[0] = GetPanelMenuBar(panelHdl);
 	menuCtrls[1] = MENUBAR_Menu_Control;
 	menuCtrls[2] = MENUBAR_Menu3_View;
@@ -615,7 +734,7 @@ void CVICALLBACK menu_Exit(int menuBar, int menuItem, void *callbackData,int pan
 void CVICALLBACK menuBarLoadDataCallback(int menuBar, int menuItem, void *callbackData,int panel){
 	int fileLoadPanel;
 	if((fileLoadPanel = LoadPanel(0, "MainPanel.uir", ReadPanel)) < 0)
-			showError(0,0, "Load ReadPanelPanel Error!");
+			showError("Load ReadPanelPanel Error!");
 	DisplayPanel(fileLoadPanel);
 }
 /*---------------------------------------------------------------------------*/
@@ -634,14 +753,7 @@ Error:
 void CVICALLBACK pauseReceive (int menuBar, int menuItem, 
 	void *callbackData, int panel){
 	if(PGraphs[0] <= 0) return;
-	if(receiveFlag == 0){
-		SetMenuBarAttribute (menuBar, menuItem, ATTR_ITEM_NAME, "Pause All");
-		receiveFlag = 1;
-		startDataAcq();
-	}else{ 
-		pauseDataAcq();
-		SetMenuBarAttribute (menuBar, menuItem, ATTR_ITEM_NAME, "Resume All");
-	}
+	pauseDataAcq();
 }
 
 /*---------------------------------------------------------------------------*/
@@ -680,40 +792,11 @@ void closePopupPanel(int pHdl){
 /*---------------------------------------------------------------------------*/
 // 辅助类函数  显示错误信息			                                         
 /*---------------------------------------------------------------------------*/
-void showError (int errorType, int errorCode, char* msg){
-    char ErrorMessage[256];
-	strcat(ErrorMessage, msg);
-    if (errorType == RS232_Error){
-		switch (errorCode){
-	        default:
-	            if (errorCode < 0){  
-	                Fmt(ErrorMessage, "%s<RS232 error number %i", errorCode);
-	                MessagePopup("RS232 Message", ErrorMessage);}
-	            break;
-	        case 0:
-	            MessagePopup("RS232 Message", "No errors.");
-	            break;
-	        case -2:
-	            Fmt(ErrorMessage, "%s", 
-					"Invalid port number (must be in the range 1 to 8).");
-	            MessagePopup("RS232 Message", ErrorMessage);
-	            break;
-	        case -3 :
-	            Fmt(ErrorMessage, "%s", 
-					"No port is open.\n Check COM Port setting in Configure.");
-	            MessagePopup("RS232 Message", ErrorMessage);
-	            break;
-	        case -99 :
-	            Fmt(ErrorMessage, "%s", "Timeout error.\n\n"
-	                 "Either increase timeout value,\n"
-	                 "       check COM Port setting, or\n"
-	                 "       check device.");
-	            MessagePopup("RS232 Message", ErrorMessage);
-	            break;
-		}//switch();
-	}else {
-		 MessagePopup("Error !", ErrorMessage);
-	}
+void showError(char* msg){
+    char ErrorMsg[256];
+	strcat(ErrorMsg, "An error has occured,here is the detail:\n");
+	strcat(ErrorMsg, msg);
+    MessagePopup("Error !", ErrorMsg);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -826,9 +909,9 @@ int seperateData (unsigned char *data){
 	SolveFunc(&data[0], READ_LENGTH);
 	return 0;
 }
-void SolveFunc (unsigned char* solvedata, int readnum){
+void SolveFunc(unsigned char* solvedata, int readnum){
 	unsigned char storedata[24];
-	for (int k=0; k<readnum; ){
+	for (int k=0; k<readnum; k++){
 		if (solvedata[k] == 0xeb && solvedata[k+1] == 0xea ){ //正常寻找帧
 			SeperateFunc (&solvedata[k]);
 			k = k + 24;}
@@ -839,7 +922,7 @@ void SolveFunc (unsigned char* solvedata, int readnum){
 				g_databuffer[j] = solvedata[k+j];}
 			break;
 		}
-		if (k == 0 && dataLen != 0){
+		if(k == 0 && dataLen != 0){
 			for (int j=0; j<dataLen; j++){  //寻找帧头
 				if (g_databuffer[j] == 0xeb){	//找到帧头	
 					for (int m=j; m<dataLen; m++){	//开始连接帧
@@ -915,11 +998,35 @@ int CVICALLBACK ring1Callback (int panel, int control, int event,
 /* 下拉控件-加窗类型-回调函数 */
 int CVICALLBACK windowTypeCallback(int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2){
+	int i; 
+	GetCtrlVal(panel, PopupPanel_RingWindowType, &i);
 	switch(event){
 		case EVENT_COMMIT:
 			drawAnalysisResult(panel);
-			
-			addLog("加窗类型变为", 1, panel);
+			char msg[256];msg[0] = '\0';
+			sprintf(msg, "添加-");
+			switch(i){
+				case 0:
+					strcat(msg, "海宁窗");
+					break;
+				case 1:
+					strcat(msg, "海明窗");
+					break;
+				case 2:
+					strcat(msg, "布拉克曼窗");
+					break;
+			  	case 3:
+					strcat(msg, "指数窗");
+					break;
+				case 4:
+					strcat(msg, "高斯窗");
+					break;
+				case 5:
+					strcat(msg, "三角窗");
+					break;
+			}
+			strcat(msg, "-函数");
+			addLog(msg, 1, panel);
 			break;
 	}
 	return 0;
@@ -932,6 +1039,9 @@ int CVICALLBACK analysisCallback (int panel, int control, int event,
 	switch (event){
 		case EVENT_COMMIT:
 			drawAnalysisResult(panel);
+			char msg[256];msg[0] = '\0';
+			sprintf(msg, "添加频谱分析！");
+			addLog(msg, 1, panel);
 			break;
 	}
 	return 0;
@@ -939,40 +1049,43 @@ int CVICALLBACK analysisCallback (int panel, int control, int event,
 
 /* 多个下拉控件-共同调用的函数 */
 void drawAnalysisResult(int panel){
-	int type_2, type_3;
 	int i = getGraphIndex(panel, 1);
+	double tempDataDuplicate1[READ_LENGTH/24], tempDataDuplicate2[READ_LENGTH/24];
+	int type_2, type_3, isThroughWindow;
 	int pointsNum =  READ_LENGTH/24;
 	double spectrum[pointsNum], df;
+	for(int j=0; j<(sizeof(tempData[i])/sizeof(double)); j++){
+		tempDataDuplicate1[j] = tempData[i][j];
+		tempDataDuplicate2[j] = tempData[i][j];
+	}
 	GetCtrlVal(panel, PopupPanel_RingWindowType, &type_2);
-	GetCtrlVal(panel, PopupPanel_RingFFT, &type_3);	
+	GetCtrlVal(panel, PopupPanel_RingFFT, &type_3);
+	GetCtrlVal(panel, PopupPanel_PopupSwitcher, &isThroughWindow);	
 	DeleteGraphPlot(panel, PopupPanel_PopGraph2, -1, VAL_IMMEDIATE_DRAW);
 	DeleteGraphPlot(panel, PopupPanel_PopGraph3, -1, VAL_IMMEDIATE_DRAW);
 	//-temp signal1 (panel, PANEL_RING_SIGNALTYPE, EVENT_COMMIT, NULL, 0, 0);   
 	//获得窗函数类型
-	switch(type_2){
-		//对信号加窗
+	switch(type_2){ //对信号加窗
 		case 0://加 汉宁窗
-			HanWin(tempData[i], pointsNum); break;
+			HanWin(tempDataDuplicate1, pointsNum); break;
 		case 1://加 海明窗
-			HamWin(tempData[i], pointsNum); break;
+			HamWin(tempDataDuplicate1, pointsNum); break;
 		case 2://加 布拉克曼窗
-			BkmanWin(tempData[i], pointsNum); break;
+			BkmanWin(tempDataDuplicate1, pointsNum); break;
 		case 3://加 指数窗
-			ExpWin(tempData[i], pointsNum, 0.01); break;
+			ExpWin(tempDataDuplicate1, pointsNum, 0.01); break;
 		case 4://加 高斯窗
-			GaussWin(tempData[i], pointsNum, 0.2); break;
+			GaussWin(tempDataDuplicate1, pointsNum, 0.2); break;
 		case 5://加 三角窗
-			TriWin(tempData[i], pointsNum);break;
+			TriWin(tempDataDuplicate1, pointsNum);break;
 	}//switch()
 	PlotY(panel, PopupPanel_PopGraph2, tempData[i], pointsNum, 
 			VAL_DOUBLE, VAL_THIN_LINE, VAL_EMPTY_SQUARE, VAL_SOLID, 1, VAL_RED);
-	AutoPowerSpectrum (tempData[i], pointsNum, 1/100, spectrum, &df);
-    /*-temp switch(scaling){
-        case 1:
-            for (j=0; j<(pointsNum/2); j++) 
-                spectrum[j] = 20*(log10(spectrum[j]));
-            break;
-    } temp-*/
+	if(isThroughWindow == 1){
+		AutoPowerSpectrum(tempDataDuplicate1, pointsNum, 1/100, spectrum, &df);
+	}else{
+		AutoPowerSpectrum(tempDataDuplicate2, pointsNum, 1/100, spectrum, &df);
+	}
     PlotY(panel, PopupPanel_PopGraph3, spectrum, pointsNum/2,
           VAL_DOUBLE, VAL_THIN_LINE, VAL_NO_POINT, VAL_SOLID, 1, (i)?VAL_YELLOW:VAL_RED);
 }
@@ -986,7 +1099,7 @@ void popupPanelForGraph(int pHdl){
 	// 从uir文件中加载 信号分析面板
 	if(PopPanels[i] <=0 ){
 		if ((PopPanels[i] = LoadPanel(0, "MainPanel.uir", PopupPanel)) < 0)
-			showError(0,0, "Load PopupPanel Error!");
+			showError("Load PopupPanel Error!");
 		DisplayPanel(PopPanels[i]);
 		PopGraphs[i] = PopupPanel_PopGraph1;
 		GetPanelAttribute(pHdl, ATTR_TITLE, title);
@@ -1006,7 +1119,7 @@ int CVICALLBACK PopSwitcherCallback (int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2) {
 	switch (event) {
 		case EVENT_COMMIT:
-
+			drawAnalysisResult(panel);
 			break;
 	}
 	return 0;
@@ -1016,7 +1129,7 @@ int CVICALLBACK PopLogInfoBtn (int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2) {
 	switch (event) {
 		case EVENT_COMMIT:
-
+			ResetTextBox(panel, PopupPanel_PopLogBox, "");
 			break;
 	}
 	return 0;
@@ -1028,7 +1141,8 @@ int CVICALLBACK chooseFileBtnCallback (int panel, int control, int event,
 		case EVENT_COMMIT:
             if (FileSelectPopup ("", "", "", "Select File to Load",
                		VAL_OK_BUTTON, 0, 0, 1, 1, loadFilePath) <= 0) return 0;
-            showFileInfo(panel);
+            SetCtrlVal(panel, ReadPanel_PathString, loadFilePath);
+			showFileInfo(panel);
 			break;
 	}
 	return 0;
@@ -1044,18 +1158,26 @@ void showFileInfo(int panel){
 	Fmt(temp, "文件大小： %d Bytes \n\n", len);
 	strcat(msg, temp);
 	double timeFrequency;GetCtrlVal(panel, ReadPanel_SetReadSpeedRing, &timeFrequency);
-	double timeLast = len/READ_LENGTH*timeFrequency;
+	double timeLast, temp1 = len/READ_LENGTH;
+	if(temp1 <= 1)
+		timeLast = 1;
+	else
+		timeLast = (temp1-1)*timeFrequency;
 	Fmt(temp, "预计持续时长： %f s", timeLast);
 	strcat(msg, temp);
 	SetCtrlVal(panel, ReadPanel_FileInfoDetail, msg);
 }
 int CVICALLBACK finishChooseFileBtnCallback (int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2) {
-	switch (event) {
+	switch (event){
 		case EVENT_COMMIT:
-			DiscardPanel(panel);
 			configComFlag = 0;
 			refreshDimmedStat();
+			//Set the data source to ReadFile
+			dataSrc = 1;
+			loadFPP = 0;
+			GetCtrlVal(panel, ReadPanel_SetReadSpeedRing, &fileLoadSpeed);
+			DiscardPanel(panel);
 			break;
 	}
 	return 0;
@@ -1064,7 +1186,7 @@ int CVICALLBACK finishChooseFileBtnCallback (int panel, int control, int event,
 /* 信号分析窗口-原始信号图表-回调函数 */
 int CVICALLBACK PopGraph1Callback (int panel, int control, int event,
 		void *callbackData, int eventData1, int eventData2) {
-	switch (event) {
+	switch (event){
 		case EVENT_LEFT_DOUBLE_CLICK:
 			int i = getGraphIndex(panel, 1);
 			for(int j=0; j<(sizeof(resultData[i])/sizeof(double)); j++)
@@ -1073,6 +1195,7 @@ int CVICALLBACK PopGraph1Callback (int panel, int control, int event,
 			PopGPlots[i] = PlotY(PopPanels[i], PopGraphs[i], tempData[i], READ_LENGTH/24, 
 							 VAL_DOUBLE, VAL_THIN_LINE, VAL_EMPTY_SQUARE, VAL_SOLID,1, plotLineColor);
 			
+			addLog("成功刷新一组数据!", 1, panel);
 			break;
 	}
 	return 0;
@@ -1089,4 +1212,88 @@ int CVICALLBACK readSpeedCallback (int panel, int control, int event,
 			break;
 	}
 	return 0;
+}
+
+/* 主面板-信号选择-下拉列表-回调函数 */
+int CVICALLBACK chooseASignal_List_Callback (int panel, int control, int event,
+		void *callbackData, int eventData1, int eventData2) {
+	switch (event) {
+		case EVENT_COMMIT:
+			int i; GetCtrlVal(panel, control, &i);
+			int inTheSameStat = 0;
+			int _0Count=0, _1Count=0;
+			if(i == 6){
+				SetCtrlAttribute(panel, MainPanel_ControlBtn, ATTR_LABEL_TEXT, "Start All");
+				break;
+			}
+			if(0 == signalShowingStat[i])
+				SetCtrlAttribute(panel, MainPanel_ControlBtn, ATTR_LABEL_TEXT, "Start");
+			else
+				SetCtrlAttribute(panel, MainPanel_ControlBtn, ATTR_LABEL_TEXT, "Pause");
+			break;
+	}
+	return 0;
+}
+
+void CVICALLBACK Menu_StartAll_Callback (int menuBar, int menuItem, void *callbackData,
+		int panel){
+	if(PGraphs[0] <= 0) return;
+	for(int i=0; i<validMonNum; i++){
+		signalShowingStat[i] = 1;
+	}
+	startDataAcq();
+}
+
+void CVICALLBACK Menu_StopAcq_Callback (int menuBar, int menuItem, void *callbackData,
+		int panel){
+	stopDataAcq();
+}
+
+int CVICALLBACK MainLog_Callback (int panel, int control, int event,
+		void *callbackData, int eventData1, int eventData2) {
+	switch (event) {
+		case EVENT_RIGHT_CLICK:
+			showLogBoxRightClickMenu(panel, control, eventData2, eventData1);
+			break;
+	}
+	return 0;
+}
+
+void showLogBoxRightClickMenu(int pHdl, int ctrlID, int xPoint, int yPoint){
+	int menuBar = NewMenuBar(0);
+	int menuIDForPop = NewMenu(menuBar, "" , -1);
+	NewMenuItem(menuBar, menuIDForPop, "Save Log to File", -1, 0, logBoxRightClickMenuCallback, NULL);
+	NewMenuItem(menuBar, menuIDForPop, "Clear Log Console", -1, 0, logBoxRightClickMenuCallback, NULL);
+	RunPopupMenu(menuBar, menuIDForPop, 
+		pHdl, yPoint, xPoint, 0, 0, 0, 0);
+}
+
+void CVICALLBACK logBoxRightClickMenuCallback(int menuBarHandle, int menuItemID, 
+			void *callbackData, int panelHandle){
+	switch(menuItemID){
+		case 3:
+			SYSTEMTIME localTime;
+			char dirName[MAX_PATHNAME_LEN];
+			char filePath[MAX_PATHNAME_LEN]; 
+			char fileName[200]; fileName[0]='\0';
+			GetProjectDir(dirName);
+			strcat(dirName, "\\Logs");
+			GetLocalTime(&localTime);
+			sprintf(fileName, "Log,%04d-%d-%d,%d_%02d_%02d.txt", 
+					localTime.wYear, localTime.wMonth, localTime.wDay,
+					localTime.wHour, localTime.wMinute, localTime.wSecond);
+			MakePathname(dirName, fileName, filePath);
+			FILE *fp = fopen(filePath, "w");
+			int len=0;
+			GetCtrlAttribute(panelHdl, MainPanel_MainLogBox, ATTR_STRING_TEXT_LENGTH, &len);
+			char tempLog[10000];
+			GetCtrlVal(panelHdl, MainPanel_MainLogBox, tempLog);
+			fwrite(tempLog, sizeof(char), len, fp);
+			fclose(fp);
+			ResetTextBox(panelHdl, MainPanel_MainLogBox, "Logs have been saved!");
+			break;
+		case 4:
+			ResetTextBox(panelHdl, MainPanel_MainLogBox, "");
+			break;
+	}
 }

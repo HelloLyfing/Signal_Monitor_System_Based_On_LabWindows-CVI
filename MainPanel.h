@@ -32,10 +32,10 @@
 #define  MainPanel                        2
 #define  MainPanel_Quit                   2       /* control type: command, callback function: QuitCallback */
 #define  MainPanel_Config_Btn             3       /* control type: command, callback function: Config_Com_Btn */
-#define  MainPanel_Start                  4       /* control type: command, callback function: StartBtnCallback */
-#define  MainPanel_BINARYSWITCH_2         5       /* control type: binary, callback function: (none) */
-#define  MainPanel_ID_List                6       /* control type: ring, callback function: (none) */
-#define  MainPanel_MainLogBox             7       /* control type: textBox, callback function: (none) */
+#define  MainPanel_ControlBtn             4       /* control type: command, callback function: ControlShowingBtnCallback */
+#define  MainPanel_StoreTheData_Switch    5       /* control type: binary, callback function: (none) */
+#define  MainPanel_Signal_ID_List         6       /* control type: ring, callback function: chooseASignal_List_Callback */
+#define  MainPanel_MainLogBox             7       /* control type: textBox, callback function: MainLog_Callback */
 
 #define  PopupPanel                       3       /* callback function: PopupPanelCallBack */
 #define  PopupPanel_PopGraph3             2       /* control type: graph, callback function: (none) */
@@ -71,19 +71,26 @@
 #define  MENUBAR_Menu_File_Menu_Exit      4       /* callback function: menu_Exit */
 #define  MENUBAR_Menu_Control             5
 #define  MENUBAR_Menu_Control_Menu_Pause  6       /* callback function: pauseReceive */
-#define  MENUBAR_Menu3_View               7
-#define  MENUBAR_Menu3_View_M_View_1      8       /* callback function: switchViewMode */
+#define  MENUBAR_Menu_Control_Menu_StartAll 7     /* callback function: Menu_StartAll_Callback */
+#define  MENUBAR_Menu_Control_Menu_STOP   8       /* callback function: Menu_StopAcq_Callback */
+#define  MENUBAR_Menu3_View               9
+#define  MENUBAR_Menu3_View_M_View_1      10      /* callback function: switchViewMode */
 
 
      /* Callback Prototypes: */
 
 int  CVICALLBACK analysisCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
+int  CVICALLBACK chooseASignal_List_Callback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK chooseFileBtnCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK Config_Com_Btn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK ConfigPanelCancelBtn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK ConfigPanelYesBtn(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
+int  CVICALLBACK ControlShowingBtnCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK finishChooseFileBtnCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
+int  CVICALLBACK MainLog_Callback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 void CVICALLBACK menu_Exit(int menubar, int menuItem, void *callbackData, int panel);
+void CVICALLBACK Menu_StartAll_Callback(int menubar, int menuItem, void *callbackData, int panel);
+void CVICALLBACK Menu_StopAcq_Callback(int menubar, int menuItem, void *callbackData, int panel);
 void CVICALLBACK menuBarLoadDataCallback(int menubar, int menuItem, void *callbackData, int panel);
 void CVICALLBACK pauseReceive(int menubar, int menuItem, void *callbackData, int panel);
 int  CVICALLBACK PopGraph1Callback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
@@ -93,7 +100,6 @@ int  CVICALLBACK PopSwitcherCallback(int panel, int control, int event, void *ca
 int  CVICALLBACK PopupPanelCallBack(int panel, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK QuitCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 int  CVICALLBACK readSpeedCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
-int  CVICALLBACK StartBtnCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 void CVICALLBACK switchViewMode(int menubar, int menuItem, void *callbackData, int panel);
 int  CVICALLBACK windowTypeCallback(int panel, int control, int event, void *callbackData, int eventData1, int eventData2);
 

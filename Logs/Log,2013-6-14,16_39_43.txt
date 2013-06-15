@@ -1,0 +1,6 @@
+[16:39:41] -> "DataStorage" and "Logs" 
+Directory has already existed!
+
+-------------------
+Here will show log.
+-------------------
