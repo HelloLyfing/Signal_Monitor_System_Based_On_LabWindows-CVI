@@ -1,0 +1,14 @@
+[11:42:02] -> Begin Signal Acq !
+
+[11:42:02] -> Pause Signal Acq !
+
+[11:42:02] -> End-Acq
+
+[11:41:53] -> Begin Signal Acq !
+
+[11:41:41] -> "DataStorage" and "Logs" 
+Directory has already existed!
+
+-------------------
+Here will show log.
+-------------------

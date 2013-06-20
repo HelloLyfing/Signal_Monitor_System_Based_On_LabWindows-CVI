@@ -12,11 +12,11 @@ VXIplug&play Framework 64-bit Dir = "/C/Program Files/IVI Foundation/VISA/win64"
 Number of Projects = 1
 Active Project = 1
 Project 0001 = "MyDesign.prj"
-Drag Bar Left = 262
-Window Top = 397
-Window Left = 229
-Window Bottom = 929
-Window Right = 1303
+Drag Bar Left = 213
+Window Top = 372
+Window Left = 483
+Window Bottom = 874
+Window Right = 1273
 Maximized = True
 Maximized Children = True
 Max32 Number Of Errors = 20
@@ -29,9 +29,9 @@ Save Changes Before Running = "Always"
 Hide Windows = False
 Break At First Statement = False
 Sort Type = "File Name"
-Number of Opened Files = 4
+Number of Opened Files = 3
 Window Confinement Region Enabled = True
-MainColumnWidth = 245
+MainColumnWidth = 196
 FileDateColumnWidth = 70
 FileSizeColumnWidth = 70
 StatusColumnWidth = 70
@@ -50,43 +50,33 @@ Force Rebuild = False
 [File 0001]
 Path = "/k/Developer/Workbench/Github/My_Graduate_Design/MainCode.c"
 File Type = "CSource"
-Disk Date = 3454132008
+Disk Date = 3454582314
 In Projects = "1,"
-Window Top = 32
-Window Left = 10
+Window Top = 122
+Window Left = 50
 Window Z-Order = 1
-Source Window State = "1,403,403,403,18,22,22,0,0,121,0,1,0,1,0,21,953,0,961,26,401,717,1,0,"
+Source Window State = "1,562,562,562,74,77,74,0,0,127,0,224,0,1,0,32,1080,0,1156,27,263,560,1,25,"
 
 [File 0002]
 Path = "/k/Developer/Workbench/Github/My_Graduate_Design/MainPanel.uir"
 File Type = "User Interface Resource"
-Disk Date = 3454128834
+Disk Date = 3454469875
 In Projects = "1,"
 Window Top = 62
-Window Left = 26
-Window Height = 326
-Window Width = 717
+Window Left = 18
+Window Height = 263
+Window Width = 560
 Window Z-Order = 2
 
 [File 0003]
 Path = "/k/Developer/Workbench/Github/My_Graduate_Design/MainPanel.h"
 File Type = "Include"
-Disk Date = 3454041511
+Disk Date = 3454469876
 In Projects = "1,"
 Window Top = 152
 Window Left = 74
 Window Z-Order = 3
-Source Window State = "1,49,49,49,9,34,34,0,3,80,0,0,0,0,0,16,38,0,49,9,317,720,1,0,"
-
-[File 0004]
-Path = "/c/My_Install_Space/National_Instruments/LabWindows_CVI/include/userint.h"
-File Type = "Include"
-Disk Date = 3360708000
-In Projects = ""
-Window Top = 32
-Window Left = 10
-Window Z-Order = 4
-Source Window State = "1,2448,2448,2448,12,24,24,0,3,80,0,0,0,0,0,22,2431,0,2448,12,425,720,1,0,"
+Source Window State = "1,49,49,49,9,34,34,0,0,80,0,0,0,0,0,16,40,0,53,29,317,720,1,0,"
 
 [Build Options 0001]
 Generate Browse Info = True
